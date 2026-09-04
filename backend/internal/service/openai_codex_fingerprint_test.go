@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 const testCodexFingerprintSeed = "11111111-1111-4111-8111-111111111111"
@@ -927,4 +928,170 @@ func TestApplyCodexFingerprintClientMetadataRaw_NonObjectBodyUntouched(t *testin
 		assert.False(t, changed, "非 JSON 对象 body 不应被改写: %s", body)
 		assert.Equal(t, []byte(body), out)
 	}
+}
+
+// --- off 模式 installation 兜底（#5786 全载体缺失） ---
+
+func TestDecideCodexInstallationBackfill_OffModeBackfillsCanonical(t *testing.T) {
+	account := newTestOAuthAccount(4901, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+
+	backfill := decideCodexInstallationBackfill(account, nil, nil)
+	require.NotNil(t, backfill, "客户端与账号都无 installation 时应兜底")
+	assert.Equal(t, account.ID, backfill.accountID)
+	assert.Equal(t, resolveConvergedInstallationID(account, testCodexFingerprintSeed), backfill.installationID)
+}
+
+func TestDecideCodexInstallationBackfill_DeviceIDPreferred(t *testing.T) {
+	deviceAccount := newTestOAuthAccount(4903, map[string]any{
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+		"openai_device_id":           "real-device-id",
+	})
+	backfill := decideCodexInstallationBackfill(deviceAccount, nil, nil)
+	require.NotNil(t, backfill)
+	assert.Equal(t, "real-device-id", backfill.installationID, "显式 device_id 优先于 seed 派生")
+}
+
+func TestDecideCodexInstallationBackfill_ClientCarriersSuppress(t *testing.T) {
+	account := newTestOAuthAccount(4904, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+	canonical := accountCodexCanonicalInstallationID(account)
+	require.NotEmpty(t, canonical)
+
+	// 头侧载体
+	h := http.Header{}
+	h.Set("x-codex-installation-id", "client-install")
+	assert.Nil(t, decideCodexInstallationBackfill(account, h, nil), "客户端已带 installation 头时不得兜底")
+
+	h2 := http.Header{}
+	h2.Set("x-codex-turn-metadata", `{"installation_id":"tm-install","turn_id":"t1"}`)
+	assert.Nil(t, decideCodexInstallationBackfill(account, h2, nil), "turn metadata 头已带 installation 时不得兜底")
+
+	// 体侧载体
+	assert.Nil(t, decideCodexInstallationBackfill(account, nil, map[string]any{
+		"x-codex-installation-id": "body-install",
+	}), "client_metadata 平铺键已带 installation 时不得兜底")
+
+	assert.Nil(t, decideCodexInstallationBackfill(account, nil, map[string]any{
+		"x-codex-turn-metadata": `{"installation_id":"embedded-install"}`,
+	}), "内嵌 turn metadata 已带 installation 时不得兜底")
+}
+
+func TestDecideCodexInstallationBackfill_NoSeedNoDevice(t *testing.T) {
+	account := newTestOAuthAccount(4905, nil)
+	assert.Nil(t, decideCodexInstallationBackfill(account, nil, nil), "无 seed 且无 device_id 时不兜底")
+}
+
+func TestApplyCodexInstallationBackfillToRequestBody_Additive(t *testing.T) {
+	canonical := "00000000-0000-4000-8000-0000000000aa"
+
+	// 无 client_metadata：创建并写入
+	body := map[string]any{"model": "gpt-5.6-sol"}
+	assert.True(t, applyCodexInstallationBackfillToRequestBody(body, canonical))
+	cm := body["client_metadata"].(map[string]any)
+	assert.Equal(t, canonical, cm["x-codex-installation-id"])
+	assert.NotContains(t, cm, openAIWSTurnMetadataHeader, "不应凭空创建内嵌 turn metadata")
+
+	// 已有内嵌 turn metadata：补 installation_id，保留其他字段
+	body2 := map[string]any{"client_metadata": map[string]any{
+		openAIWSTurnMetadataHeader: `{"turn_id":"t1","thread_id":"th1"}`,
+	}}
+	assert.True(t, applyCodexInstallationBackfillToRequestBody(body2, canonical))
+	var metadata map[string]any
+	require.NoError(t, json.Unmarshal([]byte(body2["client_metadata"].(map[string]any)[openAIWSTurnMetadataHeader].(string)), &metadata))
+	assert.Equal(t, canonical, metadata["installation_id"])
+	assert.Equal(t, "t1", metadata["turn_id"], "既有 turn metadata 字段必须保留")
+
+	// 已有值：不覆盖
+	body3 := map[string]any{"client_metadata": map[string]any{"x-codex-installation-id": "client-install"}}
+	assert.False(t, applyCodexInstallationBackfillToRequestBody(body3, canonical))
+	assert.Equal(t, "client-install", body3["client_metadata"].(map[string]any)["x-codex-installation-id"])
+}
+
+func TestApplyCodexInstallationBackfillToRequestBodyRaw_ParityWithMap(t *testing.T) {
+	canonical := "00000000-0000-4000-8000-0000000000bb"
+
+	body := []byte(`{"model":"gpt-5.6-sol","input":[],"client_metadata":{"x-codex-turn-metadata":"{\"turn_id\":\"t2\"}"}}`)
+	out, changed, err := applyCodexInstallationBackfillToRequestBodyRaw(body, canonical)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.Equal(t, canonical, gjson.GetBytes(out, "client_metadata.x-codex-installation-id").String())
+	embedded := gjson.GetBytes(out, "client_metadata."+openAIWSTurnMetadataHeader).String()
+	assert.Equal(t, canonical, codexJSONObjectStringField(embedded, "installation_id"))
+	assert.Equal(t, "t2", codexJSONObjectStringField(embedded, "turn_id"))
+
+	// 客户端已带平铺值：不改写
+	body2 := []byte(`{"client_metadata":{"x-codex-installation-id":"client-install"}}`)
+	out2, changed2, err := applyCodexInstallationBackfillToRequestBodyRaw(body2, canonical)
+	require.NoError(t, err)
+	assert.False(t, changed2)
+	assert.Equal(t, "client-install", gjson.GetBytes(out2, "client_metadata.x-codex-installation-id").String())
+
+	// 非 JSON 对象：原样保留
+	for _, raw := range []string{`[1,2,3]`, `"s"`, `not json`} {
+		outRaw, changedRaw, err := applyCodexInstallationBackfillToRequestBodyRaw([]byte(raw), canonical)
+		require.NoError(t, err)
+		assert.False(t, changedRaw)
+		assert.Equal(t, []byte(raw), outRaw)
+	}
+}
+
+func TestApplyStagedCodexInstallationBackfillHeaders(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	account := newTestOAuthAccount(4906, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+	canonical := accountCodexCanonicalInstallationID(account)
+	require.NotEmpty(t, canonical)
+
+	stageCodexInstallationBackfill(c, &codexInstallationBackfill{accountID: account.ID, installationID: canonical})
+	h := http.Header{}
+	applyStagedCodexInstallationBackfillHeaders(c, account, h, nil)
+	assert.Equal(t, canonical, h.Get("x-codex-installation-id"))
+
+	// 已有头值不覆盖
+	h2 := http.Header{}
+	h2.Set("x-codex-installation-id", "client-install")
+	applyStagedCodexInstallationBackfillHeaders(c, account, h2, nil)
+	assert.Equal(t, "client-install", h2.Get("x-codex-installation-id"))
+
+	// 已存在的 turn metadata 头被补齐
+	h3 := http.Header{}
+	h3.Set(openAIWSTurnMetadataHeader, `{"turn_id":"t3"}`)
+	applyStagedCodexInstallationBackfillHeaders(c, account, h3, nil)
+	assert.Equal(t, canonical, codexJSONObjectStringField(h3.Get(openAIWSTurnMetadataHeader), "installation_id"))
+	assert.Equal(t, "t3", codexJSONObjectStringField(h3.Get(openAIWSTurnMetadataHeader), "turn_id"))
+
+	// 账号不匹配的 stale 决策不得应用
+	other := newTestOAuthAccount(4907, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+	h4 := http.Header{}
+	applyStagedCodexInstallationBackfillHeaders(c, other, h4, nil)
+	assert.Empty(t, h4.Get("x-codex-installation-id"), "failover 后 stale 决策不得泄漏到其他账号")
+}
+
+func TestApplyStagedCodexInstallationBackfillHeaders_BodyToHeaderSync(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	account := newTestOAuthAccount(4909, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+
+	// 无 staged 决策但体侧已携带（如 device_id 注入或客户端仅带体值）：头与体取同一值
+	h := http.Header{}
+	body := []byte(`{"client_metadata":{"x-codex-installation-id":"body-install"}}`)
+	applyStagedCodexInstallationBackfillHeaders(c, account, h, body)
+	assert.Equal(t, "body-install", h.Get("x-codex-installation-id"), "头缺失时应与体侧取同一值")
+
+	// 体侧无 installation：不写头
+	h2 := http.Header{}
+	applyStagedCodexInstallationBackfillHeaders(c, account, h2, []byte(`{"model":"gpt-5.6-sol"}`))
+	assert.Empty(t, h2.Get("x-codex-installation-id"))
+
+	// 头已存在时不被体侧覆盖
+	h3 := http.Header{}
+	h3.Set("x-codex-installation-id", "header-install")
+	applyStagedCodexInstallationBackfillHeaders(c, account, h3, body)
+	assert.Equal(t, "header-install", h3.Get("x-codex-installation-id"))
+}
+
+func TestStageCodexInstallationBackfill_NilOverwrite(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	account := newTestOAuthAccount(4908, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+
+	stageCodexInstallationBackfill(c, &codexInstallationBackfill{accountID: account.ID, installationID: "abc"})
+	stageCodexInstallationBackfill(c, nil)
+	assert.Nil(t, stagedCodexInstallationBackfill(c, account), "无条件覆写 nil 后不得读到旧决策")
 }

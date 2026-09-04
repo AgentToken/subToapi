@@ -141,7 +141,20 @@ func codexFingerprintSeed(extra map[string]any) (string, bool) {
 
 func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
 	prepared := stripCodexFingerprintSeed(extra)
-	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) || !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+	// OAuth 账号一律持 seed：off 模式的 installation 兜底（#5786）也依赖
+	// 账号级持久化种子，不随收敛开关有无而缺位。setup_token 仅在启用收敛时
+	// 需要 seed，其身份 namespace 优先走 token 指纹，保持既有行为。
+	needsSeed := false
+	switch {
+	case platform == PlatformOpenAI && accountType == AccountTypeOAuth:
+		needsSeed = true
+	case platform == PlatformOpenAI && accountType == AccountTypeSetupToken:
+		needsSeed = codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared))
+	}
+	if !needsSeed {
+		return prepared
+	}
+	if _, ok := codexFingerprintSeed(prepared); ok {
 		return prepared
 	}
 	if prepared == nil {
@@ -161,6 +174,14 @@ func prepareCodexFingerprintExtraForUpdate(account *Account, extra map[string]an
 			prepared = make(map[string]any, 1)
 		}
 		prepared[codexFingerprintSeedExtraKey] = seed
+		return prepared
+	}
+	if account.IsOpenAIOAuth() {
+		// OAuth 账号无 seed 时补种，保证 off 模式 installation 兜底可用。
+		if prepared == nil {
+			prepared = make(map[string]any, 1)
+		}
+		prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
 		return prepared
 	}
 	if codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
@@ -597,5 +618,285 @@ func rewriteClientMetadataEmbeddedTurnMetadata(clientMetadata map[string]any, fi
 	}
 	if rebuilt, err := json.Marshal(metadata); err == nil {
 		clientMetadata["x-codex-turn-metadata"] = string(rebuilt)
+	}
+}
+
+// ---- off 模式 installation 兜底（#5786「全载体缺失」） ----
+//
+// off 表示不主动收敛、尽量透传：客户端携带的 installation 一律原样保留。
+// 但当下游请求的所有载体（独立头、turn metadata 头、body client_metadata
+// 平铺键与内嵌 turn metadata）都没有 installation 时，新版官方 Codex 的
+// 主模型请求不会产生这种形态（官方 ≥0.119.0-alpha.16 总是携带，见
+// openai/codex@5d1671ca）。此时补齐账号级 canonical installation，取值与
+// 收敛模式的 resolveConvergedInstallationID 完全一致（显式 openai_device_id
+// 优先，其次持久化 seed 派生），因此模式切换不会改变 installation 身份。
+// 客户端已携带任一载体时整体保留、绝不半改半放，避免单请求内身份分裂。
+
+const codexInstallationBackfillContextKey = "codex_installation_backfill"
+
+// codexInstallationBackfill 记录单个 attempt 的兜底决策。installationID 为空
+// 表示决策为"不补齐"（客户端已携带或账号无 canonical 取值）。
+type codexInstallationBackfill struct {
+	accountID      int64
+	installationID string
+}
+
+// stageCodexInstallationBackfill 将本 attempt 的兜底决策暂存到 gin context。
+// 必须无条件覆写（含 nil），防止 failover 后残留上一账号的决策。
+func stageCodexInstallationBackfill(c *gin.Context, backfill *codexInstallationBackfill) {
+	if c != nil {
+		c.Set(codexInstallationBackfillContextKey, backfill)
+	}
+}
+
+// stagedCodexInstallationBackfill 读取当前账号在本 attempt 的兜底决策。
+// 与 stagedCodexFingerprintIDs 相同的账号绑定守卫：决策只对产生它的账号生效。
+func stagedCodexInstallationBackfill(c *gin.Context, account *Account) *codexInstallationBackfill {
+	if c == nil || account == nil || !account.IsOpenAIOAuth() {
+		return nil
+	}
+	value, ok := c.Get(codexInstallationBackfillContextKey)
+	if !ok {
+		return nil
+	}
+	backfill, ok := value.(*codexInstallationBackfill)
+	if !ok || backfill == nil || backfill.accountID != account.ID {
+		return nil
+	}
+	return backfill
+}
+
+// accountCodexCanonicalInstallationID 返回账号级 canonical installation，
+// 与收敛模式共用同一取值来源。仅 OAuth 账号参与（setup_token 不持 seed，
+// namespace 走 token 指纹，保持既有行为）。
+func accountCodexCanonicalInstallationID(account *Account) string {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return ""
+	}
+	seed, ok := codexFingerprintSeed(account.Extra)
+	if !ok {
+		return ""
+	}
+	return resolveConvergedInstallationID(account, seed)
+}
+
+// decideCodexInstallationBackfill 针对 map 形态的请求体做兜底决策，
+// 仅在指纹收敛未启用（fpIDs == nil，即 off 模式）时调用。
+func decideCodexInstallationBackfill(account *Account, clientHeaders http.Header, clientMetadata any) *codexInstallationBackfill {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return nil
+	}
+	installationID := accountCodexCanonicalInstallationID(account)
+	if installationID == "" {
+		return nil
+	}
+	if clientHeadersCarryCodexInstallation(clientHeaders) || clientBodyCarriesCodexInstallationMap(clientMetadata) {
+		return nil
+	}
+	return &codexInstallationBackfill{accountID: account.ID, installationID: installationID}
+}
+
+// decideCodexInstallationBackfillRaw 是透传热路径的决策版本，语义与 map 版一致。
+func decideCodexInstallationBackfillRaw(account *Account, clientHeaders http.Header, body []byte) *codexInstallationBackfill {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return nil
+	}
+	installationID := accountCodexCanonicalInstallationID(account)
+	if installationID == "" {
+		return nil
+	}
+	if clientHeadersCarryCodexInstallation(clientHeaders) || clientBodyCarriesCodexInstallationRaw(gjson.ParseBytes(body)) {
+		return nil
+	}
+	return &codexInstallationBackfill{accountID: account.ID, installationID: installationID}
+}
+
+// clientHeadersCarryCodexInstallation 检查下游请求头侧的全部 installation 载体。
+func clientHeadersCarryCodexInstallation(h http.Header) bool {
+	if h == nil {
+		return false
+	}
+	if strings.TrimSpace(h.Get("x-codex-installation-id")) != "" {
+		return true
+	}
+	return codexJSONObjectStringField(h.Get(openAIWSTurnMetadataHeader), "installation_id") != ""
+}
+
+// clientBodyCarriesCodexInstallationMap 检查 map 形态请求体的 installation 载体。
+// 非字符串的既有值保守视为已携带（整体保留，不改写）。
+func clientBodyCarriesCodexInstallationMap(clientMetadata any) bool {
+	switch metadata := clientMetadata.(type) {
+	case map[string]any:
+		if v, ok := metadata["x-codex-installation-id"]; ok {
+			if s, isStr := v.(string); !isStr || strings.TrimSpace(s) != "" {
+				return true
+			}
+		}
+		if raw, ok := metadata[openAIWSTurnMetadataHeader].(string); ok {
+			if codexJSONObjectStringField(raw, "installation_id") != "" {
+				return true
+			}
+		}
+	case map[string]string:
+		if v, ok := metadata["x-codex-installation-id"]; ok && strings.TrimSpace(v) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// clientBodyCarriesCodexInstallationRaw 检查原始 JSON 请求体的 installation 载体。
+func clientBodyCarriesCodexInstallationRaw(root gjson.Result) bool {
+	if !root.IsObject() {
+		return false
+	}
+	clientMetadata := root.Get("client_metadata")
+	if clientMetadata.Exists() && !clientMetadata.IsObject() {
+		// 非对象形态保守视为已携带，整体保留。
+		return true
+	}
+	if inst := clientMetadata.Get("x-codex-installation-id"); inst.Exists() {
+		if inst.Type != gjson.String || strings.TrimSpace(inst.String()) != "" {
+			return true
+		}
+	}
+	if tm := clientMetadata.Get(openAIWSTurnMetadataHeader); tm.Exists() && tm.Type == gjson.String {
+		if codexJSONObjectStringField(tm.String(), "installation_id") != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// codexJSONObjectStringField 从 JSON 对象字符串中读取指定字符串字段，
+// 解析失败或非对象时返回空。
+func codexJSONObjectStringField(raw, key string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
+		return ""
+	}
+	value, _ := metadata[key].(string)
+	return strings.TrimSpace(value)
+}
+
+// applyCodexInstallationBackfillToRequestBody 将 canonical installation 补齐进
+// map 请求体的全部适用载体：平铺 client_metadata 键 + 已存在的内嵌 turn
+// metadata。不创建内嵌 turn metadata（避免伪造完整 turn 状态），不覆盖已有值。
+func applyCodexInstallationBackfillToRequestBody(reqBody map[string]any, installationID string) bool {
+	if reqBody == nil || installationID == "" {
+		return false
+	}
+	existing, _ := reqBody["client_metadata"].(map[string]any)
+	if existing == nil {
+		existing = make(map[string]any, 1)
+	}
+	modified := false
+	const key = "x-codex-installation-id"
+	if v, ok := existing[key].(string); !ok || strings.TrimSpace(v) == "" {
+		existing[key] = installationID
+		modified = true
+	}
+	if raw, ok := existing[openAIWSTurnMetadataHeader].(string); ok && strings.TrimSpace(raw) != "" {
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(raw), &metadata); err == nil && metadata != nil {
+			if v, ok := metadata["installation_id"].(string); !ok || strings.TrimSpace(v) == "" {
+				metadata["installation_id"] = installationID
+				if rebuilt, err := json.Marshal(metadata); err == nil {
+					existing[openAIWSTurnMetadataHeader] = string(rebuilt)
+					modified = true
+				}
+			}
+		}
+	}
+	if modified {
+		reqBody["client_metadata"] = existing
+	}
+	return modified
+}
+
+// applyCodexInstallationBackfillToRequestBodyRaw 在原始 JSON 字节上补齐
+// canonical installation，语义与 map 版逐点一致；透传热路径禁全量 Unmarshal，
+// 仅对 client_metadata 小对象做外科手术。
+func applyCodexInstallationBackfillToRequestBodyRaw(body []byte, installationID string) ([]byte, bool, error) {
+	if len(body) == 0 || installationID == "" {
+		return body, false, nil
+	}
+	root := gjson.ParseBytes(body)
+	if !root.IsObject() {
+		return body, false, nil
+	}
+	if cm := root.Get("client_metadata"); cm.Exists() && !cm.IsObject() {
+		// 非对象 client_metadata 没有 installation 载体语义，整体保留。
+		return body, false, nil
+	}
+	next := body
+	modified := false
+	const key = "client_metadata.x-codex-installation-id"
+	if inst := root.Get(key); !inst.Exists() || inst.Type != gjson.String || strings.TrimSpace(inst.String()) == "" {
+		setBody, err := sjson.SetBytes(next, key, installationID)
+		if err != nil {
+			return body, false, fmt.Errorf("backfill client_metadata installation: %w", err)
+		}
+		next = setBody
+		modified = true
+	}
+	embeddedKey := "client_metadata." + openAIWSTurnMetadataHeader
+	if embedded := gjson.GetBytes(next, embeddedKey); embedded.Exists() && embedded.Type == gjson.String && strings.TrimSpace(embedded.String()) != "" {
+		if codexJSONObjectStringField(embedded.String(), "installation_id") == "" {
+			var metadata map[string]any
+			if err := json.Unmarshal([]byte(embedded.String()), &metadata); err == nil && metadata != nil {
+				metadata["installation_id"] = installationID
+				if rebuilt, err := json.Marshal(metadata); err == nil {
+					setBody, err := sjson.SetBytes(next, embeddedKey, string(rebuilt))
+					if err != nil {
+						return body, false, fmt.Errorf("backfill embedded turn metadata installation: %w", err)
+					}
+					next = setBody
+					modified = true
+				}
+			}
+		}
+	}
+	return next, modified, nil
+}
+
+// applyStagedCodexInstallationBackfillHeaders 在出站头构建末端消费兜底决策，
+// 并做"体→头"同步：头缺失而体侧已携带 installation（客户端自身值、真实
+// device_id 注入路径，或 off 兜底补齐的 canonical 取值）时，头与体取同一值，
+// 避免同一请求载体分裂。收敛模式（device/session/full）自行覆盖 installation
+// 头，不受本函数影响。
+func applyStagedCodexInstallationBackfillHeaders(c *gin.Context, account *Account, h http.Header, reqBody []byte) {
+	if h == nil || account == nil || !account.IsOpenAIOAuth() {
+		return
+	}
+	installationID := ""
+	if backfill := stagedCodexInstallationBackfill(c, account); backfill != nil {
+		installationID = backfill.installationID
+	}
+	if installationID == "" && len(reqBody) > 0 {
+		if inst := gjson.GetBytes(reqBody, "client_metadata.x-codex-installation-id"); inst.Type == gjson.String && strings.TrimSpace(inst.String()) != "" {
+			installationID = inst.String()
+		}
+	}
+	if installationID == "" {
+		return
+	}
+	if strings.TrimSpace(h.Get("x-codex-installation-id")) == "" {
+		h.Set("x-codex-installation-id", installationID)
+	}
+	if raw := strings.TrimSpace(h.Get(openAIWSTurnMetadataHeader)); raw != "" {
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(raw), &metadata); err == nil && metadata != nil {
+			if v, ok := metadata["installation_id"].(string); !ok || strings.TrimSpace(v) == "" {
+				metadata["installation_id"] = installationID
+				if rebuilt, err := json.Marshal(metadata); err == nil {
+					h.Set(openAIWSTurnMetadataHeader, string(rebuilt))
+				}
+			}
+		}
 	}
 }

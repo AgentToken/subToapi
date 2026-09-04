@@ -189,6 +189,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 
 		stageCodexFingerprintIDs(c, nil)
+		// off 模式兜底决策同样无条件清空，防 failover 残留。
+		stageCodexInstallationBackfill(c, nil)
 		// 指纹收敛：与非透传路径同门控（仅 OAuth、legacy compact 形态跳过）。
 		// 一次性解析收敛 ID：请求体 client_metadata 在此改写（raw 字节外科
 		// 手术，透传热路径禁全量 Unmarshal），出站头改写由请求构造器读取
@@ -207,6 +209,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				if fpChanged {
 					body = fpBody
 				}
+			} else if backfill := decideCodexInstallationBackfillRaw(account, clientHeaders, body); backfill != nil {
+				// off 模式 installation 兜底（#5786 全载体缺失）：仅在客户端
+				// 完全未携带 installation 时补齐账号 canonical 取值。
+				backfillBody, backfillChanged, backfillErr := applyCodexInstallationBackfillToRequestBodyRaw(body, backfill.installationID)
+				if backfillErr != nil {
+					return nil, backfillErr
+				}
+				if backfillChanged {
+					body = backfillBody
+				}
+				stageCodexInstallationBackfill(c, backfill)
 			}
 			stageCodexFingerprintIDs(c, fpIDs)
 		}
@@ -708,6 +721,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 与请求体 client_metadata 共享同一份 IDs（与非透传路径相同的相对位置：
 	// 会话隔离之后、终态身份收口之前）。
 	applyStagedCodexFingerprintHeaders(c, account, req.Header)
+	// off 模式 installation 兜底（#5786）：消费 body 阶段产生的兜底决策，
+	// 并在头缺失时与体侧已携带的 installation 取同一值（体→头同步）。
+	applyStagedCodexInstallationBackfillHeaders(c, account, req.Header, body)
 	// 终态收口：透传路径的 OAuth 与非透传完全一致，同样强制统一出站身份
 	// （User-Agent / originator / version 同源自洽），客户端自报身份不会到达上游。
 	if account.UsesOpenAICodexProtocol() {

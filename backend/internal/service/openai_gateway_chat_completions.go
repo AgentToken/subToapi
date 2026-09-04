@@ -285,6 +285,17 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			reqBody["prompt_cache_key"] = promptCacheKey
 		}
 		applyCodexAccountIdentityClientMetadataMap(reqBody, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+		// off 模式 installation 兜底（#5786 全载体缺失）：桥接客户端无法携带
+		// installation，这里按账号 canonical 取值补齐，并与出站头共享同一决策。
+		var bridgeClientHeaders http.Header
+		if c != nil && c.Request != nil {
+			bridgeClientHeaders = c.Request.Header
+		}
+		stageCodexInstallationBackfill(c, nil)
+		if backfill := decideCodexInstallationBackfill(account, bridgeClientHeaders, reqBody["client_metadata"]); backfill != nil {
+			applyCodexInstallationBackfillToRequestBody(reqBody, backfill.installationID)
+			stageCodexInstallationBackfill(c, backfill)
+		}
 		responsesBody, err = json.Marshal(reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
