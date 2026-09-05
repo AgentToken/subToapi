@@ -1095,3 +1095,40 @@ func TestStageCodexInstallationBackfill_NilOverwrite(t *testing.T) {
 	stageCodexInstallationBackfill(c, nil)
 	assert.Nil(t, stagedCodexInstallationBackfill(c, account), "无条件覆写 nil 后不得读到旧决策")
 }
+
+func TestApplyCodexWSInstallationBackfillHeaders(t *testing.T) {
+	account := newTestOAuthAccount(4910, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+	canonical := accountCodexCanonicalInstallationID(account)
+	require.NotEmpty(t, canonical)
+
+	// 客户端未携带任何载体：补齐 canonical
+	h := http.Header{}
+	applyCodexWSInstallationBackfillHeaders(account, h)
+	assert.Equal(t, canonical, h.Get("x-codex-installation-id"))
+
+	// 客户端已带头值：不改写
+	h2 := http.Header{}
+	h2.Set("x-codex-installation-id", "client-install")
+	applyCodexWSInstallationBackfillHeaders(account, h2)
+	assert.Equal(t, "client-install", h2.Get("x-codex-installation-id"))
+
+	// 客户端 turn metadata 头已带 installation：整体保留
+	h3 := http.Header{}
+	h3.Set(openAIWSTurnMetadataHeader, `{"installation_id":"tm-install"}`)
+	applyCodexWSInstallationBackfillHeaders(account, h3)
+	assert.Empty(t, h3.Get("x-codex-installation-id"), "客户端已携带 installation 载体时不得兜底")
+
+	// 已存在 turn metadata 头缺 installation：补齐且保留其他字段
+	h4 := http.Header{}
+	h4.Set(openAIWSTurnMetadataHeader, `{"turn_id":"t4"}`)
+	applyCodexWSInstallationBackfillHeaders(account, h4)
+	assert.Equal(t, canonical, h4.Get("x-codex-installation-id"))
+	assert.Equal(t, canonical, codexJSONObjectStringField(h4.Get(openAIWSTurnMetadataHeader), "installation_id"))
+	assert.Equal(t, "t4", codexJSONObjectStringField(h4.Get(openAIWSTurnMetadataHeader), "turn_id"))
+
+	// 无 seed 且无 device_id：不兜底
+	bare := newTestOAuthAccount(4911, nil)
+	h5 := http.Header{}
+	applyCodexWSInstallationBackfillHeaders(bare, h5)
+	assert.Empty(t, h5.Get("x-codex-installation-id"))
+}

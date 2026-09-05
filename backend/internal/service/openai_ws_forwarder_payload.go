@@ -145,6 +145,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 	applyCodexAccountIdentityHeaders(headers, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 	applyStagedCodexFingerprintHeaders(c, account, headers)
+	// off 模式 installation 兜底（#5786 全载体缺失）：客户端升级请求未携带
+	// installation 时补齐账号 canonical 取值，与 HTTP 出站同规则。
+	applyCodexWSInstallationBackfillHeaders(account, headers)
 
 	if account != nil && account.UsesOpenAICodexProtocol() {
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {

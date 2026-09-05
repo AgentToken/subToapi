@@ -864,6 +864,32 @@ func applyCodexInstallationBackfillToRequestBodyRaw(body []byte, installationID 
 	return next, modified, nil
 }
 
+// fillCodexTurnMetadataInstallation 向已存在的 turn metadata 头补
+// installation_id（不创建、不覆盖既有值），返回是否修改。
+func fillCodexTurnMetadataInstallation(h http.Header, installationID string) bool {
+	if h == nil || installationID == "" {
+		return false
+	}
+	raw := strings.TrimSpace(h.Get(openAIWSTurnMetadataHeader))
+	if raw == "" {
+		return false
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
+		return false
+	}
+	if v, ok := metadata["installation_id"].(string); ok && strings.TrimSpace(v) != "" {
+		return false
+	}
+	metadata["installation_id"] = installationID
+	rebuilt, err := json.Marshal(metadata)
+	if err != nil {
+		return false
+	}
+	h.Set(openAIWSTurnMetadataHeader, string(rebuilt))
+	return true
+}
+
 // applyStagedCodexInstallationBackfillHeaders 在出站头构建末端消费兜底决策，
 // 并做"体→头"同步：头缺失而体侧已携带 installation（客户端自身值、真实
 // device_id 注入路径，或 off 兜底补齐的 canonical 取值）时，头与体取同一值，
@@ -888,15 +914,24 @@ func applyStagedCodexInstallationBackfillHeaders(c *gin.Context, account *Accoun
 	if strings.TrimSpace(h.Get("x-codex-installation-id")) == "" {
 		h.Set("x-codex-installation-id", installationID)
 	}
-	if raw := strings.TrimSpace(h.Get(openAIWSTurnMetadataHeader)); raw != "" {
-		var metadata map[string]any
-		if err := json.Unmarshal([]byte(raw), &metadata); err == nil && metadata != nil {
-			if v, ok := metadata["installation_id"].(string); !ok || strings.TrimSpace(v) == "" {
-				metadata["installation_id"] = installationID
-				if rebuilt, err := json.Marshal(metadata); err == nil {
-					h.Set(openAIWSTurnMetadataHeader, string(rebuilt))
-				}
-			}
-		}
+	fillCodexTurnMetadataInstallation(h, installationID)
+}
+
+// applyCodexWSInstallationBackfillHeaders 为 WebSocket 握手头做 off 模式
+// installation 兜底（#5786 全载体缺失）。与 HTTP 路径同规则：客户端升级请求
+// 未携带任何 installation 载体（此时出站头也不会有——身份层只改写已有值，
+// 收敛模式会自行写入 installation 头）时，补齐账号 canonical 取值。
+func applyCodexWSInstallationBackfillHeaders(account *Account, h http.Header) {
+	if h == nil || account == nil || !account.IsOpenAIOAuth() {
+		return
 	}
+	if clientHeadersCarryCodexInstallation(h) {
+		return
+	}
+	installationID := accountCodexCanonicalInstallationID(account)
+	if installationID == "" {
+		return
+	}
+	h.Set("x-codex-installation-id", installationID)
+	fillCodexTurnMetadataInstallation(h, installationID)
 }

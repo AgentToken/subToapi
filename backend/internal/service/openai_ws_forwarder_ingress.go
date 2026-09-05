@@ -327,6 +327,26 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if accountScoped {
 			normalized = accountScopedPayload
 		}
+		// off 模式 installation 兜底（#5786 全载体缺失）：与 HTTP 路径同规则，
+		// 客户端升级请求未携带任何 installation 载体且载荷缺失时补齐账号
+		// canonical 取值。
+		if account != nil && account.IsOpenAIOAuth() {
+			var wsClientHeaders http.Header
+			if c != nil && c.Request != nil {
+				wsClientHeaders = c.Request.Header
+			}
+			if !clientHeadersCarryCodexInstallation(wsClientHeaders) {
+				if installationID := accountCodexCanonicalInstallationID(account); installationID != "" {
+					backfilledPayload, backfilled, backfillErr := applyCodexInstallationBackfillToRequestBodyRaw(normalized, installationID)
+					if backfillErr != nil {
+						return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket installation metadata", backfillErr)
+					}
+					if backfilled {
+						normalized = backfilledPayload
+					}
+				}
+			}
+		}
 		if responsesLite {
 			litePayload, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(normalized, account)
 			if liteErr != nil {
