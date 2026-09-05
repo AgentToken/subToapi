@@ -986,7 +986,8 @@ func TestApplyCodexInstallationBackfillToRequestBody_Additive(t *testing.T) {
 	// 无 client_metadata：创建并写入
 	body := map[string]any{"model": "gpt-5.6-sol"}
 	assert.True(t, applyCodexInstallationBackfillToRequestBody(body, canonical))
-	cm := body["client_metadata"].(map[string]any)
+	cm, cmOk := body["client_metadata"].(map[string]any)
+	require.True(t, cmOk)
 	assert.Equal(t, canonical, cm["x-codex-installation-id"])
 	assert.NotContains(t, cm, openAIWSTurnMetadataHeader, "不应凭空创建内嵌 turn metadata")
 
@@ -995,15 +996,19 @@ func TestApplyCodexInstallationBackfillToRequestBody_Additive(t *testing.T) {
 		openAIWSTurnMetadataHeader: `{"turn_id":"t1","thread_id":"th1"}`,
 	}}
 	assert.True(t, applyCodexInstallationBackfillToRequestBody(body2, canonical))
+	metadataRaw, metadataRawOk := body2["client_metadata"].(map[string]any)[openAIWSTurnMetadataHeader].(string)
+	require.True(t, metadataRawOk)
 	var metadata map[string]any
-	require.NoError(t, json.Unmarshal([]byte(body2["client_metadata"].(map[string]any)[openAIWSTurnMetadataHeader].(string)), &metadata))
+	require.NoError(t, json.Unmarshal([]byte(metadataRaw), &metadata))
 	assert.Equal(t, canonical, metadata["installation_id"])
 	assert.Equal(t, "t1", metadata["turn_id"], "既有 turn metadata 字段必须保留")
 
 	// 已有值：不覆盖
 	body3 := map[string]any{"client_metadata": map[string]any{"x-codex-installation-id": "client-install"}}
 	assert.False(t, applyCodexInstallationBackfillToRequestBody(body3, canonical))
-	assert.Equal(t, "client-install", body3["client_metadata"].(map[string]any)["x-codex-installation-id"])
+	body3cm, body3cmOk := body3["client_metadata"].(map[string]any)
+	require.True(t, body3cmOk)
+	assert.Equal(t, "client-install", body3cm["x-codex-installation-id"])
 }
 
 func TestApplyCodexInstallationBackfillToRequestBodyRaw_ParityWithMap(t *testing.T) {
@@ -1228,7 +1233,7 @@ func TestResolveCodexSmartInstallationBackfill(t *testing.T) {
 
 func TestResolveCodexSmartInstallationBackfill_ClientBindingWins(t *testing.T) {
 	ctx := context.Background()
-	store := newTestBindingStore(newFakeBindingGatewayCache())
+	store := newTestBindingStore(t, newFakeBindingGatewayCache())
 	svc := &OpenAIGatewayService{codexSessionBindings: store}
 	account := newTestOAuthAccount(4924, map[string]any{
 		codexFingerprintModeExtraKey: "smart",
@@ -1256,7 +1261,9 @@ func TestApplyCodexSmartInstallationToRequestBody_Authoritative(t *testing.T) {
 	// 无 client_metadata：创建并写入
 	body := map[string]any{"model": "gpt-5.6-sol"}
 	assert.True(t, applyCodexSmartInstallationToRequestBody(body, canonical))
-	assert.Equal(t, canonical, body["client_metadata"].(map[string]any)["x-codex-installation-id"])
+	createdMetadata, createdMetadataOk := body["client_metadata"].(map[string]any)
+	require.True(t, createdMetadataOk)
+	assert.Equal(t, canonical, createdMetadata["x-codex-installation-id"])
 
 	// 客户端既有值被权威覆盖（规则 3）
 	body2 := map[string]any{"client_metadata": map[string]any{
@@ -1264,10 +1271,13 @@ func TestApplyCodexSmartInstallationToRequestBody_Authoritative(t *testing.T) {
 		openAIWSTurnMetadataHeader: `{"installation_id":"client-old","turn_id":"t5"}`,
 	}}
 	assert.True(t, applyCodexSmartInstallationToRequestBody(body2, canonical))
-	cm := body2["client_metadata"].(map[string]any)
+	cm, cmOk := body2["client_metadata"].(map[string]any)
+	require.True(t, cmOk)
 	assert.Equal(t, canonical, cm["x-codex-installation-id"])
+	metadataRaw, metadataRawOk := cm[openAIWSTurnMetadataHeader].(string)
+	require.True(t, metadataRawOk)
 	var metadata map[string]any
-	require.NoError(t, json.Unmarshal([]byte(cm[openAIWSTurnMetadataHeader].(string)), &metadata))
+	require.NoError(t, json.Unmarshal([]byte(metadataRaw), &metadata))
 	assert.Equal(t, canonical, metadata["installation_id"])
 	assert.Equal(t, "t5", metadata["turn_id"], "非身份字段保留")
 }
@@ -1335,7 +1345,7 @@ func TestCaptureCodexClientInstallationIdentity(t *testing.T) {
 
 func TestForwardPassthroughSmartBinding_EndToEnd(t *testing.T) {
 	ctx := context.Background()
-	store := newTestBindingStore(newFakeBindingGatewayCache())
+	store := newTestBindingStore(t, newFakeBindingGatewayCache())
 	svc := &OpenAIGatewayService{}
 	svc.codexSessionBindings = store
 	account := newTestOAuthAccount(4926, map[string]any{

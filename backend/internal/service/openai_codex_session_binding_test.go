@@ -38,15 +38,17 @@ func (c *fakeBindingGatewayCache) GetCodexSessionInstallationBinding(_ context.C
 	return append([]byte(nil), payload...), nil
 }
 
-func newTestBindingStore(cache GatewayCache) CodexSessionInstallationBindingStore {
-	store := NewCodexSessionInstallationBindingStore(cache).(*defaultCodexSessionInstallationBindingStore)
+func newTestBindingStore(t *testing.T, cache GatewayCache) CodexSessionInstallationBindingStore {
+	t.Helper()
+	store, ok := NewCodexSessionInstallationBindingStore(cache).(*defaultCodexSessionInstallationBindingStore)
+	require.True(t, ok, "默认实现类型断言")
 	base := time.Unix(1_700_000_000, 0)
 	store.clock = func() time.Time { return base }
 	return store
 }
 
 func TestCodexSessionBinding_ClientInstallationBindsAsClient(t *testing.T) {
-	store := newTestBindingStore(newFakeBindingGatewayCache())
+	store := newTestBindingStore(t, newFakeBindingGatewayCache())
 
 	binding, ok := store.Resolve(context.Background(), 71, "sess-aaa", "client-install-1", "canonical-install")
 	require.True(t, ok)
@@ -55,7 +57,7 @@ func TestCodexSessionBinding_ClientInstallationBindsAsClient(t *testing.T) {
 }
 
 func TestCodexSessionBinding_NoClientInstallationBindsCanonical(t *testing.T) {
-	store := newTestBindingStore(newFakeBindingGatewayCache())
+	store := newTestBindingStore(t, newFakeBindingGatewayCache())
 
 	binding, ok := store.Resolve(context.Background(), 71, "sess-bbb", "", "canonical-install")
 	require.True(t, ok)
@@ -64,7 +66,7 @@ func TestCodexSessionBinding_NoClientInstallationBindsCanonical(t *testing.T) {
 }
 
 func TestCodexSessionBinding_ImmutableAfterFirstObservation(t *testing.T) {
-	store := newTestBindingStore(newFakeBindingGatewayCache())
+	store := newTestBindingStore(t, newFakeBindingGatewayCache())
 	ctx := context.Background()
 
 	first, ok := store.Resolve(ctx, 71, "sess-ccc", "client-first", "canonical-install")
@@ -81,7 +83,7 @@ func TestCodexSessionBinding_ImmutableAfterFirstObservation(t *testing.T) {
 }
 
 func TestCodexSessionBinding_SessionAndAccountScoped(t *testing.T) {
-	store := newTestBindingStore(newFakeBindingGatewayCache())
+	store := newTestBindingStore(t, newFakeBindingGatewayCache())
 	ctx := context.Background()
 
 	a, ok := store.Resolve(ctx, 71, "sess-a", "client-x", "canonical-a")
@@ -109,12 +111,12 @@ func TestCodexSessionBinding_PersistsAcrossStoreInstances(t *testing.T) {
 	cache := newFakeBindingGatewayCache()
 	ctx := context.Background()
 
-	first := newTestBindingStore(cache)
+	first := newTestBindingStore(t, cache)
 	binding, ok := first.Resolve(ctx, 71, "sess-persist", "client-persist", "canonical")
 	require.True(t, ok)
 
 	// 模拟重启：新实例从缓存后端恢复既有绑定，而不是重新按首次观测建绑。
-	second := newTestBindingStore(cache)
+	second := newTestBindingStore(t, cache)
 	restored, ok := second.Resolve(ctx, 71, "sess-persist", "", "canonical")
 	require.True(t, ok)
 	assert.Equal(t, binding.InstallationID, restored.InstallationID)
@@ -122,7 +124,7 @@ func TestCodexSessionBinding_PersistsAcrossStoreInstances(t *testing.T) {
 }
 
 func TestCodexSessionBinding_InvalidInputs(t *testing.T) {
-	store := newTestBindingStore(newFakeBindingGatewayCache())
+	store := newTestBindingStore(t, newFakeBindingGatewayCache())
 	ctx := context.Background()
 
 	_, ok := store.Resolve(ctx, 71, "", "client", "canonical")
