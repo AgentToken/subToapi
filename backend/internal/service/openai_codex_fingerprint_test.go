@@ -1132,3 +1132,42 @@ func TestApplyCodexWSInstallationBackfillHeaders(t *testing.T) {
 	applyCodexWSInstallationBackfillHeaders(bare, h5)
 	assert.Empty(t, h5.Get("x-codex-installation-id"))
 }
+
+func TestApplyStagedCodexInstallationBackfillHeaders_CompactPath(t *testing.T) {
+	account := newTestOAuthAccount(4912, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+	canonical := accountCodexCanonicalInstallationID(account)
+	require.NotEmpty(t, canonical)
+
+	newCompactContext := func(t *testing.T) *gin.Context {
+		t.Helper()
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/backend-api/codex/responses/compact", nil)
+		return c
+	}
+
+	// compact 路径：头与体都缺失 → 头侧补齐 canonical
+	c := newCompactContext(t)
+	h := http.Header{}
+	applyStagedCodexInstallationBackfillHeaders(c, account, h, []byte(`{"model":"gpt-5.6-sol"}`))
+	assert.Equal(t, canonical, h.Get("x-codex-installation-id"))
+
+	// compact 路径：体侧已携带 → 头与体取同一值，不用 canonical
+	c2 := newCompactContext(t)
+	h2 := http.Header{}
+	applyStagedCodexInstallationBackfillHeaders(c2, account, h2, []byte(`{"client_metadata":{"x-codex-installation-id":"body-install"}}`))
+	assert.Equal(t, "body-install", h2.Get("x-codex-installation-id"))
+
+	// compact 路径：头已存在 → 不覆盖
+	c3 := newCompactContext(t)
+	h3 := http.Header{}
+	h3.Set("x-codex-installation-id", "client-install")
+	applyStagedCodexInstallationBackfillHeaders(c3, account, h3, []byte(`{}`))
+	assert.Equal(t, "client-install", h3.Get("x-codex-installation-id"))
+
+	// 非 compact 路径：无 staged 决策且体侧缺失时不得头侧兜底（保持原语义）
+	c4, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c4.Request = httptest.NewRequest(http.MethodPost, "/backend-api/codex/responses", nil)
+	h4 := http.Header{}
+	applyStagedCodexInstallationBackfillHeaders(c4, account, h4, []byte(`{"model":"gpt-5.6-sol"}`))
+	assert.Empty(t, h4.Get("x-codex-installation-id"))
+}

@@ -908,6 +908,14 @@ func applyStagedCodexInstallationBackfillHeaders(c *gin.Context, account *Accoun
 			installationID = inst.String()
 		}
 	}
+	if installationID == "" && isOpenAIResponsesCompactPath(c) {
+		// compact 路径在 body 阶段跳过兜底决策（legacy compact 形态不参与
+		// 体改写），这里按头侧兜底：体侧也没有 installation 时补齐 canonical
+		//（#5786：官方 compact 同样通过头携带安装身份）。
+		if len(reqBody) == 0 || !clientBodyCarriesCodexInstallationRaw(gjson.ParseBytes(reqBody)) {
+			installationID = accountCodexCanonicalInstallationID(account)
+		}
+	}
 	if installationID == "" {
 		return
 	}
