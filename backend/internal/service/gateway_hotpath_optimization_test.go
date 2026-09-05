@@ -150,6 +150,14 @@ func (s *stickyGatewayCacheHotpathStub) SetGrokVideoPendingBilling(_ context.Con
 func (s *stickyGatewayCacheHotpathStub) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
 	return nil, nil
 }
+
+func (s *stickyGatewayCacheHotpathStub) SetCodexSessionInstallationBinding(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) GetCodexSessionInstallationBinding(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
 func (s *stickyGatewayCacheHotpathStub) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
 	return true, nil
 }

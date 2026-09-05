@@ -201,6 +201,14 @@ func (c *comboCacheAndStore) SetGrokVideoPendingBilling(_ context.Context, _ str
 func (c *comboCacheAndStore) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
 	return nil, nil
 }
+
+func (c *comboCacheAndStore) SetCodexSessionInstallationBinding(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+
+func (c *comboCacheAndStore) GetCodexSessionInstallationBinding(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
 func (c *comboCacheAndStore) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
 	return true, nil
 }

@@ -332,6 +332,20 @@ func (s *OpenAIGatewayService) getOpenAIWSStateStore() OpenAIWSStateStore {
 	return s.openaiWSStateStore
 }
 
+// getCodexSessionInstallationBindingStore 惰性构建 smart 指纹模式的 session
+// 身份绑定存储（#5786 持久化 binding），与 getOpenAIWSStateStore 同模式。
+func (s *OpenAIGatewayService) getCodexSessionInstallationBindingStore() CodexSessionInstallationBindingStore {
+	if s == nil {
+		return nil
+	}
+	s.codexSessionBindingsOnce.Do(func() {
+		if s.codexSessionBindings == nil {
+			s.codexSessionBindings = NewCodexSessionInstallationBindingStore(s.cache)
+		}
+	})
+	return s.codexSessionBindings
+}
+
 func (s *OpenAIGatewayService) openAIWSResponseStickyTTL() time.Duration {
 	if s != nil && s.cfg != nil {
 		seconds := s.cfg.Gateway.OpenAIWS.StickyResponseIDTTLSeconds

@@ -492,6 +492,14 @@ type GatewayCache interface {
 	// ReleaseGrokVideoBilled clears a claim so a failed RecordUsage can retry billing.
 	ReleaseGrokVideoBilled(ctx context.Context, key string) error
 
+	// Codex session installation binding（smart 指纹模式的持久化 session 身份绑定）。
+	// SetCodexSessionInstallationBinding 写入绑定快照；首次写入生效，后续覆盖需由调用方
+	// 自行保证（绑定值一经创建不可变）。
+	SetCodexSessionInstallationBinding(ctx context.Context, key string, payload []byte, ttl time.Duration) error
+	// GetCodexSessionInstallationBinding 读取绑定快照；未命中返回 (nil, nil)，
+	// 与 Grok 视频缓存一致，方便 service 层区分"未绑定"与真实读取失败。
+	GetCodexSessionInstallationBinding(ctx context.Context, key string) ([]byte, error)
+
 	// Reasoning content cache (Responses→Chat Completions 桥接）。
 	// SetReasoningContent 按 reasoning item id 缓存 reasoning 全文，供后续请求
 	// 在客户端不回传明文 summary 时回注 reasoning_content（DeepSeek thinking

@@ -118,6 +118,14 @@ func (c StubGatewayCache) ReleaseGrokVideoBilled(_ context.Context, _ string) er
 	return nil
 }
 
+func (c StubGatewayCache) SetCodexSessionInstallationBinding(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+
+func (c StubGatewayCache) GetCodexSessionInstallationBinding(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+
 func (c StubGatewayCache) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
 	return nil
 }

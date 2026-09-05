@@ -164,7 +164,40 @@ var _ service.OpenAIWSSessionPreemptionCache = (*gatewayCache)(nil)
 const (
 	grokVideoPendingBillingPrefix = "grok_video_pending:"
 	grokVideoBilledPrefix         = "grok_video_billed:"
+	codexSessionBindingPrefix     = "codex_session_installation_binding:"
 )
+
+func (c *gatewayCache) SetCodexSessionInstallationBinding(ctx context.Context, key string, payload []byte, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" || len(payload) == 0 {
+		return errors.New("invalid codex session installation binding payload")
+	}
+	if ttl <= 0 {
+		ttl = 30 * 24 * time.Hour
+	}
+	return c.rdb.Set(ctx, codexSessionBindingPrefix+key, payload, ttl).Err()
+}
+
+func (c *gatewayCache) GetCodexSessionInstallationBinding(ctx context.Context, key string) ([]byte, error) {
+	if c == nil || c.rdb == nil {
+		return nil, errors.New("gateway cache unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, errors.New("invalid codex session installation binding key")
+	}
+	val, err := c.rdb.Get(ctx, codexSessionBindingPrefix+key).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return val, nil
+}
 
 func (c *gatewayCache) SetGrokVideoPendingBilling(ctx context.Context, key string, payload []byte, ttl time.Duration) error {
 	if c == nil || c.rdb == nil {

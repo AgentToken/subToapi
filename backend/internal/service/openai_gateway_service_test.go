@@ -747,6 +747,14 @@ func (c *stubGatewayCache) SetGrokVideoPendingBilling(_ context.Context, _ strin
 func (c *stubGatewayCache) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
 	return nil, nil
 }
+
+func (c *stubGatewayCache) SetCodexSessionInstallationBinding(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+
+func (c *stubGatewayCache) GetCodexSessionInstallationBinding(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
 func (c *stubGatewayCache) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
 	return true, nil
 }
