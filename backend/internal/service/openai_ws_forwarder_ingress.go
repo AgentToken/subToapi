@@ -319,6 +319,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			normalized = next
 		}
+		// smart 模式（#5786）：在账号身份隔离改写之前捕获客户端原始会话与
+		// installation，解析持久化绑定；绑定值稍后以权威语义投影。
+		var wsSmartBackfill *codexInstallationBackfill
+		if account != nil && account.GetCodexFingerprintMode() == codexFingerprintSmart {
+			var wsClientHeadersEarly http.Header
+			if c != nil && c.Request != nil {
+				wsClientHeadersEarly = c.Request.Header
+			}
+			smartSessionID, smartInstallation := captureCodexClientInstallationIdentityRaw(wsClientHeadersEarly, gjson.ParseBytes(normalized))
+			wsSmartBackfill = s.resolveCodexSmartInstallationBackfill(ctx, account, smartSessionID, smartInstallation)
+		}
 		accountIdentitySourceRaw := append([]byte(nil), normalized...)
 		accountScopedPayload, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(normalized, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if scopeErr != nil {
@@ -327,22 +338,32 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if accountScoped {
 			normalized = accountScopedPayload
 		}
-		// off 模式 installation 兜底（#5786 全载体缺失）：与 HTTP 路径同规则，
-		// 客户端升级请求未携带任何 installation 载体且载荷缺失时补齐账号
-		// canonical 取值。
+		// installation 出站决策（#5786）：smart 绑定存在时以权威语义投影到
+		// 载荷全部适用载体；否则按 off 兜底规则——客户端升级请求未携带任何
+		// installation 载体且载荷缺失时补齐账号 canonical 取值。
 		if account != nil && account.IsOpenAIOAuth() {
-			var wsClientHeaders http.Header
-			if c != nil && c.Request != nil {
-				wsClientHeaders = c.Request.Header
-			}
-			if !clientHeadersCarryCodexInstallation(wsClientHeaders) {
-				if installationID := accountCodexCanonicalInstallationID(account); installationID != "" {
-					backfilledPayload, backfilled, backfillErr := applyCodexInstallationBackfillToRequestBodyRaw(normalized, installationID)
-					if backfillErr != nil {
-						return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket installation metadata", backfillErr)
-					}
-					if backfilled {
-						normalized = backfilledPayload
+			if wsSmartBackfill != nil {
+				smartPayload, smartChanged, smartErr := applyCodexSmartInstallationToRequestBodyRaw(normalized, wsSmartBackfill.installationID)
+				if smartErr != nil {
+					return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket installation metadata", smartErr)
+				}
+				if smartChanged {
+					normalized = smartPayload
+				}
+			} else {
+				var wsClientHeaders http.Header
+				if c != nil && c.Request != nil {
+					wsClientHeaders = c.Request.Header
+				}
+				if !clientHeadersCarryCodexInstallation(wsClientHeaders) {
+					if installationID := accountCodexCanonicalInstallationID(account); installationID != "" {
+						backfilledPayload, backfilled, backfillErr := applyCodexInstallationBackfillToRequestBodyRaw(normalized, installationID)
+						if backfillErr != nil {
+							return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket installation metadata", backfillErr)
+						}
+						if backfilled {
+							normalized = backfilledPayload
+						}
 					}
 				}
 			}

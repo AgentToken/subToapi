@@ -284,15 +284,30 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		} else if promptCacheKey != "" {
 			reqBody["prompt_cache_key"] = promptCacheKey
 		}
+		// smart 模式（#5786）：在账号身份隔离改写之前捕获客户端原始会话与
+		// installation，解析持久化绑定；绑定值稍后以权威语义投影。
+		var smartBackfill *codexInstallationBackfill
+		if account != nil && account.GetCodexFingerprintMode() == codexFingerprintSmart {
+			var bridgeClientHeadersEarly http.Header
+			if c != nil && c.Request != nil {
+				bridgeClientHeadersEarly = c.Request.Header
+			}
+			earlyMetadata, _ := reqBody["client_metadata"].(map[string]any)
+			smartSessionID, smartInstallation := captureCodexClientInstallationIdentity(bridgeClientHeadersEarly, earlyMetadata)
+			smartBackfill = s.resolveCodexSmartInstallationBackfill(ctx, account, smartSessionID, smartInstallation)
+		}
 		applyCodexAccountIdentityClientMetadataMap(reqBody, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
-		// off 模式 installation 兜底（#5786 全载体缺失）：桥接客户端无法携带
-		// installation，这里按账号 canonical 取值补齐，并与出站头共享同一决策。
+		// installation 出站决策（#5786）：smart 绑定存在时以权威语义投影；
+		// 否则按 off 兜底规则——桥接客户端未携带任何载体时补齐账号 canonical。
 		var bridgeClientHeaders http.Header
 		if c != nil && c.Request != nil {
 			bridgeClientHeaders = c.Request.Header
 		}
 		stageCodexInstallationBackfill(c, nil)
-		if backfill := decideCodexInstallationBackfill(account, bridgeClientHeaders, reqBody["client_metadata"]); backfill != nil {
+		if smartBackfill != nil {
+			applyCodexSmartInstallationToRequestBody(reqBody, smartBackfill.installationID)
+			stageCodexInstallationBackfill(c, smartBackfill)
+		} else if backfill := decideCodexInstallationBackfill(account, bridgeClientHeaders, reqBody["client_metadata"]); backfill != nil {
 			applyCodexInstallationBackfillToRequestBody(reqBody, backfill.installationID)
 			stageCodexInstallationBackfill(c, backfill)
 		}

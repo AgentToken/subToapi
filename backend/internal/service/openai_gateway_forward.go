@@ -515,6 +515,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.Modified {
 			markDecodedModified()
 		}
+		// smart 模式（#5786）：在账号身份隔离改写之前捕获客户端原始会话与
+		// installation，解析持久化绑定；绑定值稍后以权威语义投影。
+		var smartBackfill *codexInstallationBackfill
+		if !isCompactRequest && account != nil && account.GetCodexFingerprintMode() == codexFingerprintSmart {
+			var clientHeadersEarly http.Header
+			if c != nil && c.Request != nil {
+				clientHeadersEarly = c.Request.Header
+			}
+			earlyMetadata, _ := decoded["client_metadata"].(map[string]any)
+			smartSessionID, smartInstallation := captureCodexClientInstallationIdentity(clientHeadersEarly, earlyMetadata)
+			smartBackfill = s.resolveCodexSmartInstallationBackfill(ctx, account, smartSessionID, smartInstallation)
+		}
 		// 带真实 device_id 时补齐 client_metadata 安装标识，与真实 Codex 对齐（compact 形态不同，跳过）。
 		if !isCompactRequest && applyCodexClientMetadata(decoded, account) {
 			markDecodedModified()
@@ -543,6 +555,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				if applyCodexFingerprintClientMetadata(decoded, fpIDs) {
 					markDecodedModified()
 				}
+			} else if smartBackfill != nil {
+				// smart 绑定权威投影（#5786 规则 3）：绑定值覆盖所有适用载体。
+				if applyCodexSmartInstallationToRequestBody(decoded, smartBackfill.installationID) {
+					markDecodedModified()
+				}
+				stageCodexInstallationBackfill(c, smartBackfill)
 			} else if backfill := decideCodexInstallationBackfill(account, clientHeaders, decoded["client_metadata"]); backfill != nil {
 				// off 模式 installation 兜底（#5786 全载体缺失）：仅在客户端
 				// 完全未携带 installation 时补齐账号 canonical 取值。

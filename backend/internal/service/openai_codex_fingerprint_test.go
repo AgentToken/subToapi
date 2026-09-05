@@ -1101,35 +1101,47 @@ func TestApplyCodexWSInstallationBackfillHeaders(t *testing.T) {
 	canonical := accountCodexCanonicalInstallationID(account)
 	require.NotEmpty(t, canonical)
 
+	newWSHookContext := func(t *testing.T) *gin.Context {
+		t.Helper()
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		stageCodexInstallationBackfill(c, nil)
+		return c
+	}
+
 	// 客户端未携带任何载体：补齐 canonical
+	c := newWSHookContext(t)
 	h := http.Header{}
-	applyCodexWSInstallationBackfillHeaders(account, h)
+	applyCodexWSInstallationBackfillHeaders(c, account, h)
 	assert.Equal(t, canonical, h.Get("x-codex-installation-id"))
 
 	// 客户端已带头值：不改写
+	c2 := newWSHookContext(t)
 	h2 := http.Header{}
 	h2.Set("x-codex-installation-id", "client-install")
-	applyCodexWSInstallationBackfillHeaders(account, h2)
+	applyCodexWSInstallationBackfillHeaders(c2, account, h2)
 	assert.Equal(t, "client-install", h2.Get("x-codex-installation-id"))
 
 	// 客户端 turn metadata 头已带 installation：整体保留
+	c3 := newWSHookContext(t)
 	h3 := http.Header{}
 	h3.Set(openAIWSTurnMetadataHeader, `{"installation_id":"tm-install"}`)
-	applyCodexWSInstallationBackfillHeaders(account, h3)
+	applyCodexWSInstallationBackfillHeaders(c3, account, h3)
 	assert.Empty(t, h3.Get("x-codex-installation-id"), "客户端已携带 installation 载体时不得兜底")
 
 	// 已存在 turn metadata 头缺 installation：补齐且保留其他字段
+	c4 := newWSHookContext(t)
 	h4 := http.Header{}
 	h4.Set(openAIWSTurnMetadataHeader, `{"turn_id":"t4"}`)
-	applyCodexWSInstallationBackfillHeaders(account, h4)
+	applyCodexWSInstallationBackfillHeaders(c4, account, h4)
 	assert.Equal(t, canonical, h4.Get("x-codex-installation-id"))
 	assert.Equal(t, canonical, codexJSONObjectStringField(h4.Get(openAIWSTurnMetadataHeader), "installation_id"))
 	assert.Equal(t, "t4", codexJSONObjectStringField(h4.Get(openAIWSTurnMetadataHeader), "turn_id"))
 
 	// 无 seed 且无 device_id：不兜底
 	bare := newTestOAuthAccount(4911, nil)
+	c5 := newWSHookContext(t)
 	h5 := http.Header{}
-	applyCodexWSInstallationBackfillHeaders(bare, h5)
+	applyCodexWSInstallationBackfillHeaders(c5, bare, h5)
 	assert.Empty(t, h5.Get("x-codex-installation-id"))
 }
 
@@ -1170,4 +1182,197 @@ func TestApplyStagedCodexInstallationBackfillHeaders_CompactPath(t *testing.T) {
 	h4 := http.Header{}
 	applyStagedCodexInstallationBackfillHeaders(c4, account, h4, []byte(`{"model":"gpt-5.6-sol"}`))
 	assert.Empty(t, h4.Get("x-codex-installation-id"))
+}
+
+// --- smart 指纹收敛模式（#5786 smart 策略） ---
+
+func TestCodexFingerprintMode_SmartAccepted(t *testing.T) {
+	account := newTestOAuthAccount(4920, map[string]any{
+		codexFingerprintModeExtraKey: "smart",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+	})
+	assert.Equal(t, codexFingerprintSmart, account.GetCodexFingerprintMode())
+	assert.True(t, codexFingerprintModeRequiresSeed(codexFingerprintSmart))
+	assert.Nil(t, resolveCodexFingerprintIDs(account, "client-sess-smart", codexFingerprintSmart), "smart 不做静态收敛")
+}
+
+func TestResolveCodexSmartInstallationBackfill(t *testing.T) {
+	ctx := context.Background()
+	newSmartAccount := func() *Account {
+		return newTestOAuthAccount(4921, map[string]any{
+			codexFingerprintModeExtraKey: "smart",
+			codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+		})
+	}
+
+	// 非 smart 账号：不解析
+	offAccount := newTestOAuthAccount(4922, map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed})
+	svc := &OpenAIGatewayService{}
+	assert.Nil(t, svc.resolveCodexSmartInstallationBackfill(ctx, offAccount, "sess-1", ""))
+
+	// 会话缺失：不猜（规则 4）
+	smartAccount := newSmartAccount()
+	assert.Nil(t, svc.resolveCodexSmartInstallationBackfill(ctx, smartAccount, "", ""))
+
+	// 无 seed 且无 device_id：无 canonical 来源（直接构造，绕过测试辅助的 seed 注入）
+	bareSmart := &Account{ID: 4923, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{codexFingerprintModeExtraKey: "smart"}}
+	assert.Nil(t, svc.resolveCodexSmartInstallationBackfill(ctx, bareSmart, "sess-1", ""))
+
+	// 正常解析：返回权威绑定决策
+	backfill := svc.resolveCodexSmartInstallationBackfill(ctx, smartAccount, "sess-1", "")
+	require.NotNil(t, backfill)
+	assert.True(t, backfill.authoritative)
+	assert.Equal(t, smartAccount.ID, backfill.accountID)
+	assert.Equal(t, resolveConvergedInstallationID(smartAccount, testCodexFingerprintSeed), backfill.installationID, "客户端未携带时绑定 canonical")
+}
+
+func TestResolveCodexSmartInstallationBackfill_ClientBindingWins(t *testing.T) {
+	ctx := context.Background()
+	store := newTestBindingStore(newFakeBindingGatewayCache())
+	svc := &OpenAIGatewayService{codexSessionBindings: store}
+	account := newTestOAuthAccount(4924, map[string]any{
+		codexFingerprintModeExtraKey: "smart",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+	})
+
+	// 首次观测：客户端自带 installation → legacy/client 绑定
+	first := svc.resolveCodexSmartInstallationBackfill(ctx, account, "sess-legacy", "client-own-install")
+	require.NotNil(t, first)
+	assert.Equal(t, "client-own-install", first.installationID)
+
+	// 后续请求：客户端换值或缺失都固定使用绑定值
+	second := svc.resolveCodexSmartInstallationBackfill(ctx, account, "sess-legacy", "client-rotated")
+	require.NotNil(t, second)
+	assert.Equal(t, "client-own-install", second.installationID)
+
+	third := svc.resolveCodexSmartInstallationBackfill(ctx, account, "sess-legacy", "")
+	require.NotNil(t, third)
+	assert.Equal(t, "client-own-install", third.installationID)
+}
+
+func TestApplyCodexSmartInstallationToRequestBody_Authoritative(t *testing.T) {
+	canonical := "00000000-0000-4000-8000-0000000000cc"
+
+	// 无 client_metadata：创建并写入
+	body := map[string]any{"model": "gpt-5.6-sol"}
+	assert.True(t, applyCodexSmartInstallationToRequestBody(body, canonical))
+	assert.Equal(t, canonical, body["client_metadata"].(map[string]any)["x-codex-installation-id"])
+
+	// 客户端既有值被权威覆盖（规则 3）
+	body2 := map[string]any{"client_metadata": map[string]any{
+		"x-codex-installation-id":  "client-old",
+		openAIWSTurnMetadataHeader: `{"installation_id":"client-old","turn_id":"t5"}`,
+	}}
+	assert.True(t, applyCodexSmartInstallationToRequestBody(body2, canonical))
+	cm := body2["client_metadata"].(map[string]any)
+	assert.Equal(t, canonical, cm["x-codex-installation-id"])
+	var metadata map[string]any
+	require.NoError(t, json.Unmarshal([]byte(cm[openAIWSTurnMetadataHeader].(string)), &metadata))
+	assert.Equal(t, canonical, metadata["installation_id"])
+	assert.Equal(t, "t5", metadata["turn_id"], "非身份字段保留")
+}
+
+func TestApplyCodexSmartInstallationToRequestBodyRaw_Authoritative(t *testing.T) {
+	canonical := "00000000-0000-4000-8000-0000000000dd"
+
+	body := []byte(`{"client_metadata":{"x-codex-installation-id":"client-old","x-codex-turn-metadata":"{\"installation_id\":\"client-old\"}"}}`)
+	out, changed, err := applyCodexSmartInstallationToRequestBodyRaw(body, canonical)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.Equal(t, canonical, gjson.GetBytes(out, "client_metadata.x-codex-installation-id").String())
+	assert.Equal(t, canonical, codexJSONObjectStringField(gjson.GetBytes(out, "client_metadata."+openAIWSTurnMetadataHeader).String(), "installation_id"))
+
+	// 非 JSON 对象：原样保留
+	outRaw, changedRaw, err := applyCodexSmartInstallationToRequestBodyRaw([]byte(`[1]`), canonical)
+	require.NoError(t, err)
+	assert.False(t, changedRaw)
+	assert.Equal(t, []byte(`[1]`), outRaw)
+}
+
+func TestApplyStagedCodexInstallationBackfillHeaders_SmartAuthoritative(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	account := newTestOAuthAccount(4925, map[string]any{
+		codexFingerprintModeExtraKey: "smart",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+	})
+	bound := "bound-install"
+	stageCodexInstallationBackfill(c, &codexInstallationBackfill{accountID: account.ID, installationID: bound, authoritative: true})
+
+	// 头已携带客户端值：权威绑定覆盖（规则 3）
+	h := http.Header{}
+	h.Set("x-codex-installation-id", "client-own")
+	h.Set(openAIWSTurnMetadataHeader, `{"installation_id":"client-own","turn_id":"t6"}`)
+	applyStagedCodexInstallationBackfillHeaders(c, account, h, nil)
+	assert.Equal(t, bound, h.Get("x-codex-installation-id"))
+	assert.Equal(t, bound, codexJSONObjectStringField(h.Get(openAIWSTurnMetadataHeader), "installation_id"))
+	assert.Equal(t, "t6", codexJSONObjectStringField(h.Get(openAIWSTurnMetadataHeader), "turn_id"))
+}
+
+func TestCaptureCodexClientInstallationIdentity(t *testing.T) {
+	// 头优先
+	h := http.Header{}
+	h.Set("session-id", "sess-header")
+	h.Set("x-codex-installation-id", "install-header")
+	sessionID, installation := captureCodexClientInstallationIdentity(h, nil)
+	assert.Equal(t, "sess-header", sessionID)
+	assert.Equal(t, "install-header", installation)
+
+	// 头缺失时回退 body
+	metadata := map[string]any{"session_id": "sess-body", "x-codex-installation-id": "install-body"}
+	sessionID, installation = captureCodexClientInstallationIdentity(nil, metadata)
+	assert.Equal(t, "sess-body", sessionID)
+	assert.Equal(t, "install-body", installation)
+
+	// 内嵌 turn metadata 兜底
+	h2 := http.Header{}
+	h2.Set("session-id", "sess-h")
+	sessionID, installation = captureCodexClientInstallationIdentity(h2, map[string]any{
+		openAIWSTurnMetadataHeader: `{"installation_id":"install-embedded"}`,
+	})
+	assert.Equal(t, "sess-h", sessionID)
+	assert.Equal(t, "install-embedded", installation)
+}
+
+func TestForwardPassthroughSmartBinding_EndToEnd(t *testing.T) {
+	ctx := context.Background()
+	store := newTestBindingStore(newFakeBindingGatewayCache())
+	svc := &OpenAIGatewayService{}
+	svc.codexSessionBindings = store
+	account := newTestOAuthAccount(4926, map[string]any{
+		codexFingerprintModeExtraKey: "smart",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeed,
+	})
+
+	bound := accountCodexCanonicalInstallationID(account)
+	require.NotEmpty(t, bound)
+
+	// 第一次：客户端未携带 installation → 绑定 canonical。
+	// 按 forwardOpenAIPassthrough 的生产顺序：捕获→解析→体投影→暂存→出站头。
+	c := newFingerprintStageTestContext(t)
+	c.Request.Header.Set("session-id", "real-client-session")
+	body1 := []byte(`{"model":"gpt-5.6-sol","instructions":"x","input":[],"stream":true}`)
+	sess1, inst1 := captureCodexClientInstallationIdentityRaw(c.Request.Header, gjson.ParseBytes(body1))
+	backfill1 := svc.resolveCodexSmartInstallationBackfill(ctx, account, sess1, inst1)
+	require.NotNil(t, backfill1)
+	assert.True(t, backfill1.authoritative)
+	assert.Equal(t, bound, backfill1.installationID)
+	stageCodexInstallationBackfill(c, backfill1)
+	req1, err := svc.buildUpstreamRequestOpenAIPassthrough(ctx, c, account, body1, "test-token")
+	require.NoError(t, err)
+	assert.Equal(t, bound, req1.Header.Get("x-codex-installation-id"))
+
+	// 第二次：客户端携带不同 installation → 仍固定使用绑定值（不重新读取下游）
+	c2 := newFingerprintStageTestContext(t)
+	c2.Request.Header.Set("session-id", "real-client-session")
+	c2.Request.Header.Set("x-codex-installation-id", "client-rotated")
+	body2 := []byte(`{"model":"gpt-5.6-sol","instructions":"x","input":[],"stream":true,"client_metadata":{"x-codex-installation-id":"client-rotated"}}`)
+	sess2, inst2 := captureCodexClientInstallationIdentityRaw(c2.Request.Header, gjson.ParseBytes(body2))
+	assert.Equal(t, "client-rotated", inst2, "捕获的是客户端原始值")
+	backfill2 := svc.resolveCodexSmartInstallationBackfill(ctx, account, sess2, inst2)
+	require.NotNil(t, backfill2)
+	assert.Equal(t, bound, backfill2.installationID, "同一会话固定使用首次绑定值")
+	stageCodexInstallationBackfill(c2, backfill2)
+	req2, err := svc.buildUpstreamRequestOpenAIPassthrough(ctx, c2, account, body2, "test-token")
+	require.NoError(t, err)
+	assert.Equal(t, bound, req2.Header.Get("x-codex-installation-id"), "权威绑定覆盖客户端轮换后的 installation")
 }

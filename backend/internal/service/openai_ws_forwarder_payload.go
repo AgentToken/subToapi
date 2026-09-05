@@ -145,9 +145,18 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 	applyCodexAccountIdentityHeaders(headers, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 	applyStagedCodexFingerprintHeaders(c, account, headers)
+	// smart 模式（#5786）：握手头先于任何载荷构建，这里从客户端升级请求头
+	// 解析持久化绑定并暂存，供下方钩子以权威语义应用。
+	if account != nil && account.IsOpenAIOAuth() && account.GetCodexFingerprintMode() == codexFingerprintSmart {
+		wsSessionID, wsInstallation := captureCodexClientInstallationIdentity(c.Request.Header, nil)
+		if smartBackfill := s.resolveCodexSmartInstallationBackfill(ctx, account, wsSessionID, wsInstallation); smartBackfill != nil {
+			stageCodexInstallationBackfill(c, smartBackfill)
+		}
+	}
 	// off 模式 installation 兜底（#5786 全载体缺失）：客户端升级请求未携带
-	// installation 时补齐账号 canonical 取值，与 HTTP 出站同规则。
-	applyCodexWSInstallationBackfillHeaders(account, headers)
+	// installation 时补齐账号 canonical 取值，与 HTTP 出站同规则；smart 绑定
+	// 暂存值存在时以权威语义覆盖。
+	applyCodexWSInstallationBackfillHeaders(c, account, headers)
 
 	if account != nil && account.UsesOpenAICodexProtocol() {
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {

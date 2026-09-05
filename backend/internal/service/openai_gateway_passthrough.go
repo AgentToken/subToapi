@@ -180,6 +180,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		reqStream = gjson.GetBytes(body, "stream").Bool()
 
+		// smart 模式（#5786）：在账号身份隔离改写之前捕获客户端原始会话与
+		// installation，解析持久化绑定；绑定值稍后以权威语义投影。
+		var smartBackfill *codexInstallationBackfill
+		if account != nil && account.GetCodexFingerprintMode() == codexFingerprintSmart {
+			var passthroughClientHeadersEarly http.Header
+			if c != nil && c.Request != nil {
+				passthroughClientHeadersEarly = c.Request.Header
+			}
+			smartSessionID, smartInstallation := captureCodexClientInstallationIdentityRaw(passthroughClientHeadersEarly, gjson.ParseBytes(body))
+			smartBackfill = s.resolveCodexSmartInstallationBackfill(ctx, account, smartSessionID, smartInstallation)
+		}
 		accountScopedBody, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if scopeErr != nil {
 			return nil, scopeErr
@@ -209,6 +220,16 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				if fpChanged {
 					body = fpBody
 				}
+			} else if smartBackfill != nil {
+				// smart 绑定权威投影（#5786 规则 3）：绑定值覆盖所有适用载体。
+				smartBody, smartChanged, smartErr := applyCodexSmartInstallationToRequestBodyRaw(body, smartBackfill.installationID)
+				if smartErr != nil {
+					return nil, smartErr
+				}
+				if smartChanged {
+					body = smartBody
+				}
+				stageCodexInstallationBackfill(c, smartBackfill)
 			} else if backfill := decideCodexInstallationBackfillRaw(account, clientHeaders, body); backfill != nil {
 				// off 模式 installation 兜底（#5786 全载体缺失）：仅在客户端
 				// 完全未携带 installation 时补齐账号 canonical 取值。
