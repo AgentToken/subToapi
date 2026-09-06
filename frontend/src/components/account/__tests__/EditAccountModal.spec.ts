@@ -1456,3 +1456,44 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     wrapper.unmount()
   })
 })
+
+describe('EditAccountModal Codex 指纹收敛回显', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+  })
+
+  it('回显 smart 模式（含 smart 的合法值白名单，不得回落为 off）', () => {
+    const account = {
+      ...buildOpenAIOAuthParentAccount(),
+      extra: { codex_fingerprint_mode: 'smart' }
+    }
+    const wrapper = mountModal(account)
+    const values = wrapper.findAllComponents(SelectStub).map((s) => s.props('modelValue'))
+    expect(values).toContain('smart')
+    wrapper.unmount()
+  })
+
+  it('回显 device/session/full 模式不回归', () => {
+    for (const mode of ['device', 'session', 'full']) {
+      const account = {
+        ...buildOpenAIOAuthParentAccount(),
+        extra: { codex_fingerprint_mode: mode }
+      }
+      const wrapper = mountModal(account)
+      const values = wrapper.findAllComponents(SelectStub).map((s) => s.props('modelValue'))
+      expect(values).toContain(mode)
+      wrapper.unmount()
+    }
+  })
+
+  it('非法值按 off 呈现（opt-in 语义）', () => {
+    const account = {
+      ...buildOpenAIOAuthParentAccount(),
+      extra: { codex_fingerprint_mode: 'bogus-mode' }
+    }
+    const wrapper = mountModal(account)
+    const values = wrapper.findAllComponents(SelectStub).map((s) => s.props('modelValue'))
+    expect(values).not.toContain('bogus-mode')
+    wrapper.unmount()
+  })
+})
