@@ -152,6 +152,7 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 		BodyTruncated:   bodyTruncated,
 		Intel:           intel,
 		InjectedPayload: payload,
+		ResponseText:    assistantText,
 		ResponseMode:    responseMode,
 	}
 	svc := h.svc

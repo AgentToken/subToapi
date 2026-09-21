@@ -43,6 +43,8 @@ const (
 	FieldIntel = "intel"
 	// FieldInjectedPayload holds the string denoting the injected_payload field in the database.
 	FieldInjectedPayload = "injected_payload"
+	// FieldResponseText holds the string denoting the response_text field in the database.
+	FieldResponseText = "response_text"
 	// FieldResponseMode holds the string denoting the response_mode field in the database.
 	FieldResponseMode = "response_mode"
 	// Table holds the table name of the honeypotevent in the database.
@@ -67,6 +69,7 @@ var Columns = []string{
 	FieldBodyTruncated,
 	FieldIntel,
 	FieldInjectedPayload,
+	FieldResponseText,
 	FieldResponseMode,
 }
 
@@ -184,6 +187,11 @@ func ByBodyTruncated(opts ...sql.OrderTermOption) OrderOption {
 // ByInjectedPayload orders the results by the injected_payload field.
 func ByInjectedPayload(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldInjectedPayload, opts...).ToFunc()
+}
+
+// ByResponseText orders the results by the response_text field.
+func ByResponseText(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResponseText, opts...).ToFunc()
 }
 
 // ByResponseMode orders the results by the response_mode field.

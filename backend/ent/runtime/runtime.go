@@ -1278,7 +1278,7 @@ func init() {
 	// honeypotevent.DefaultBodyTruncated holds the default value on creation for the body_truncated field.
 	honeypotevent.DefaultBodyTruncated = honeypoteventDescBodyTruncated.Default.(bool)
 	// honeypoteventDescResponseMode is the schema descriptor for response_mode field.
-	honeypoteventDescResponseMode := honeypoteventFields[13].Descriptor()
+	honeypoteventDescResponseMode := honeypoteventFields[14].Descriptor()
 	// honeypotevent.DefaultResponseMode holds the default value on creation for the response_mode field.
 	honeypotevent.DefaultResponseMode = honeypoteventDescResponseMode.Default.(string)
 	// honeypotevent.ResponseModeValidator is a validator for the "response_mode" field. It is called by the builders before save.

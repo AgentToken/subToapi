@@ -27950,6 +27950,7 @@ type HoneypotEventMutation struct {
 	body_truncated   *bool
 	intel            *map[string]interface{}
 	injected_payload *string
+	response_text    *string
 	response_mode    *string
 	clearedFields    map[string]struct{}
 	done             bool
@@ -28680,6 +28681,55 @@ func (m *HoneypotEventMutation) ResetInjectedPayload() {
 	delete(m.clearedFields, honeypotevent.FieldInjectedPayload)
 }
 
+// SetResponseText sets the "response_text" field.
+func (m *HoneypotEventMutation) SetResponseText(s string) {
+	m.response_text = &s
+}
+
+// ResponseText returns the value of the "response_text" field in the mutation.
+func (m *HoneypotEventMutation) ResponseText() (r string, exists bool) {
+	v := m.response_text
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResponseText returns the old "response_text" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldResponseText(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseText is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseText requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseText: %w", err)
+	}
+	return oldValue.ResponseText, nil
+}
+
+// ClearResponseText clears the value of the "response_text" field.
+func (m *HoneypotEventMutation) ClearResponseText() {
+	m.response_text = nil
+	m.clearedFields[honeypotevent.FieldResponseText] = struct{}{}
+}
+
+// ResponseTextCleared returns if the "response_text" field was cleared in this mutation.
+func (m *HoneypotEventMutation) ResponseTextCleared() bool {
+	_, ok := m.clearedFields[honeypotevent.FieldResponseText]
+	return ok
+}
+
+// ResetResponseText resets all changes to the "response_text" field.
+func (m *HoneypotEventMutation) ResetResponseText() {
+	m.response_text = nil
+	delete(m.clearedFields, honeypotevent.FieldResponseText)
+}
+
 // SetResponseMode sets the "response_mode" field.
 func (m *HoneypotEventMutation) SetResponseMode(s string) {
 	m.response_mode = &s
@@ -28750,7 +28800,7 @@ func (m *HoneypotEventMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *HoneypotEventMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, honeypotevent.FieldCreatedAt)
 	}
@@ -28796,6 +28846,9 @@ func (m *HoneypotEventMutation) Fields() []string {
 	if m.injected_payload != nil {
 		fields = append(fields, honeypotevent.FieldInjectedPayload)
 	}
+	if m.response_text != nil {
+		fields = append(fields, honeypotevent.FieldResponseText)
+	}
 	if m.response_mode != nil {
 		fields = append(fields, honeypotevent.FieldResponseMode)
 	}
@@ -28837,6 +28890,8 @@ func (m *HoneypotEventMutation) Field(name string) (ent.Value, bool) {
 		return m.Intel()
 	case honeypotevent.FieldInjectedPayload:
 		return m.InjectedPayload()
+	case honeypotevent.FieldResponseText:
+		return m.ResponseText()
 	case honeypotevent.FieldResponseMode:
 		return m.ResponseMode()
 	}
@@ -28878,6 +28933,8 @@ func (m *HoneypotEventMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldIntel(ctx)
 	case honeypotevent.FieldInjectedPayload:
 		return m.OldInjectedPayload(ctx)
+	case honeypotevent.FieldResponseText:
+		return m.OldResponseText(ctx)
 	case honeypotevent.FieldResponseMode:
 		return m.OldResponseMode(ctx)
 	}
@@ -28994,6 +29051,13 @@ func (m *HoneypotEventMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetInjectedPayload(v)
 		return nil
+	case honeypotevent.FieldResponseText:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResponseText(v)
+		return nil
 	case honeypotevent.FieldResponseMode:
 		v, ok := value.(string)
 		if !ok {
@@ -29061,6 +29125,9 @@ func (m *HoneypotEventMutation) ClearedFields() []string {
 	if m.FieldCleared(honeypotevent.FieldInjectedPayload) {
 		fields = append(fields, honeypotevent.FieldInjectedPayload)
 	}
+	if m.FieldCleared(honeypotevent.FieldResponseText) {
+		fields = append(fields, honeypotevent.FieldResponseText)
+	}
 	return fields
 }
 
@@ -29089,6 +29156,9 @@ func (m *HoneypotEventMutation) ClearField(name string) error {
 		return nil
 	case honeypotevent.FieldInjectedPayload:
 		m.ClearInjectedPayload()
+		return nil
+	case honeypotevent.FieldResponseText:
+		m.ClearResponseText()
 		return nil
 	}
 	return fmt.Errorf("unknown HoneypotEvent nullable field %s", name)
@@ -29142,6 +29212,9 @@ func (m *HoneypotEventMutation) ResetField(name string) error {
 		return nil
 	case honeypotevent.FieldInjectedPayload:
 		m.ResetInjectedPayload()
+		return nil
+	case honeypotevent.FieldResponseText:
+		m.ResetResponseText()
 		return nil
 	case honeypotevent.FieldResponseMode:
 		m.ResetResponseMode()

@@ -28,6 +28,11 @@ export interface HoneypotKeyItem {
   owner_name?: string
 }
 
+export interface HoneypotConversationTurn {
+  role: string
+  text: string
+}
+
 export interface HoneypotEventItem {
   id: number
   api_key_id: number
@@ -48,8 +53,14 @@ export interface HoneypotEventItem {
     marker?: string
   }
   injected_payload?: string
+  response_text?: string
   response_mode: string
   created_at: string
+}
+
+export interface HoneypotEventDetail {
+  event: HoneypotEventItem
+  conversation: HoneypotConversationTurn[]
 }
 
 export interface HoneypotEventListResult {
@@ -124,6 +135,12 @@ export const honeypotAPI = {
     page_size?: number
   }): Promise<HoneypotEventListResult> {
     const { data } = await apiClient.get('/admin/honeypot/events', { params })
+    return data
+  },
+
+  /** 事件详情：含从请求体解析出的逐轮对话记录 */
+  async getEvent(id: number): Promise<HoneypotEventDetail> {
+    const { data } = await apiClient.get(`/admin/honeypot/events/${id}`)
     return data
   }
 }

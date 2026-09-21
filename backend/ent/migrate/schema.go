@@ -1036,6 +1036,7 @@ var (
 		{Name: "body_truncated", Type: field.TypeBool, Default: false},
 		{Name: "intel", Type: field.TypeJSON, Nullable: true},
 		{Name: "injected_payload", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "response_text", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "response_mode", Type: field.TypeString, Size: 20, Default: ""},
 	}
 	// HoneypotEventsTable holds the schema information for the "honeypot_events" table.

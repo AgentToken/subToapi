@@ -208,6 +208,20 @@ func (_c *HoneypotEventCreate) SetNillableInjectedPayload(v *string) *HoneypotEv
 	return _c
 }
 
+// SetResponseText sets the "response_text" field.
+func (_c *HoneypotEventCreate) SetResponseText(v string) *HoneypotEventCreate {
+	_c.mutation.SetResponseText(v)
+	return _c
+}
+
+// SetNillableResponseText sets the "response_text" field if the given value is not nil.
+func (_c *HoneypotEventCreate) SetNillableResponseText(v *string) *HoneypotEventCreate {
+	if v != nil {
+		_c.SetResponseText(*v)
+	}
+	return _c
+}
+
 // SetResponseMode sets the "response_mode" field.
 func (_c *HoneypotEventCreate) SetResponseMode(v string) *HoneypotEventCreate {
 	_c.mutation.SetResponseMode(v)
@@ -440,6 +454,10 @@ func (_c *HoneypotEventCreate) createSpec() (*HoneypotEvent, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.InjectedPayload(); ok {
 		_spec.SetField(honeypotevent.FieldInjectedPayload, field.TypeString, value)
 		_node.InjectedPayload = value
+	}
+	if value, ok := _c.mutation.ResponseText(); ok {
+		_spec.SetField(honeypotevent.FieldResponseText, field.TypeString, value)
+		_node.ResponseText = value
 	}
 	if value, ok := _c.mutation.ResponseMode(); ok {
 		_spec.SetField(honeypotevent.FieldResponseMode, field.TypeString, value)
@@ -698,6 +716,24 @@ func (u *HoneypotEventUpsert) UpdateInjectedPayload() *HoneypotEventUpsert {
 // ClearInjectedPayload clears the value of the "injected_payload" field.
 func (u *HoneypotEventUpsert) ClearInjectedPayload() *HoneypotEventUpsert {
 	u.SetNull(honeypotevent.FieldInjectedPayload)
+	return u
+}
+
+// SetResponseText sets the "response_text" field.
+func (u *HoneypotEventUpsert) SetResponseText(v string) *HoneypotEventUpsert {
+	u.Set(honeypotevent.FieldResponseText, v)
+	return u
+}
+
+// UpdateResponseText sets the "response_text" field to the value that was provided on create.
+func (u *HoneypotEventUpsert) UpdateResponseText() *HoneypotEventUpsert {
+	u.SetExcluded(honeypotevent.FieldResponseText)
+	return u
+}
+
+// ClearResponseText clears the value of the "response_text" field.
+func (u *HoneypotEventUpsert) ClearResponseText() *HoneypotEventUpsert {
+	u.SetNull(honeypotevent.FieldResponseText)
 	return u
 }
 
@@ -993,6 +1029,27 @@ func (u *HoneypotEventUpsertOne) UpdateInjectedPayload() *HoneypotEventUpsertOne
 func (u *HoneypotEventUpsertOne) ClearInjectedPayload() *HoneypotEventUpsertOne {
 	return u.Update(func(s *HoneypotEventUpsert) {
 		s.ClearInjectedPayload()
+	})
+}
+
+// SetResponseText sets the "response_text" field.
+func (u *HoneypotEventUpsertOne) SetResponseText(v string) *HoneypotEventUpsertOne {
+	return u.Update(func(s *HoneypotEventUpsert) {
+		s.SetResponseText(v)
+	})
+}
+
+// UpdateResponseText sets the "response_text" field to the value that was provided on create.
+func (u *HoneypotEventUpsertOne) UpdateResponseText() *HoneypotEventUpsertOne {
+	return u.Update(func(s *HoneypotEventUpsert) {
+		s.UpdateResponseText()
+	})
+}
+
+// ClearResponseText clears the value of the "response_text" field.
+func (u *HoneypotEventUpsertOne) ClearResponseText() *HoneypotEventUpsertOne {
+	return u.Update(func(s *HoneypotEventUpsert) {
+		s.ClearResponseText()
 	})
 }
 
@@ -1456,6 +1513,27 @@ func (u *HoneypotEventUpsertBulk) UpdateInjectedPayload() *HoneypotEventUpsertBu
 func (u *HoneypotEventUpsertBulk) ClearInjectedPayload() *HoneypotEventUpsertBulk {
 	return u.Update(func(s *HoneypotEventUpsert) {
 		s.ClearInjectedPayload()
+	})
+}
+
+// SetResponseText sets the "response_text" field.
+func (u *HoneypotEventUpsertBulk) SetResponseText(v string) *HoneypotEventUpsertBulk {
+	return u.Update(func(s *HoneypotEventUpsert) {
+		s.SetResponseText(v)
+	})
+}
+
+// UpdateResponseText sets the "response_text" field to the value that was provided on create.
+func (u *HoneypotEventUpsertBulk) UpdateResponseText() *HoneypotEventUpsertBulk {
+	return u.Update(func(s *HoneypotEventUpsert) {
+		s.UpdateResponseText()
+	})
+}
+
+// ClearResponseText clears the value of the "response_text" field.
+func (u *HoneypotEventUpsertBulk) ClearResponseText() *HoneypotEventUpsertBulk {
+	return u.Update(func(s *HoneypotEventUpsert) {
+		s.ClearResponseText()
 	})
 }
 

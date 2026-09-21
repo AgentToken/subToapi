@@ -296,6 +296,44 @@
                 </div>
                 <pre class="max-h-40 overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">{{ ev.injected_payload }}</pre>
               </div>
+
+              <!-- 对话记录 + 平台响应（懒加载详情） -->
+              <div v-if="detailFor(ev.id)?.conversation?.length">
+                <div class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  {{ t('admin.honeypot.events.conversation') }}
+                </div>
+                <div class="space-y-2">
+                  <div
+                    v-for="(turn, ti) in detailFor(ev.id)!.conversation"
+                    :key="ti"
+                    class="rounded-lg border border-gray-100 p-2.5 dark:border-dark-700"
+                    :class="turnRoleClass(turn.role)"
+                  >
+                    <div class="mb-1 flex items-center gap-2">
+                      <span
+                        class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                        :class="turnRoleBadgeClass(turn.role)"
+                      >{{ roleLabel(turn.role) }}</span>
+                    </div>
+                    <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs text-gray-700 dark:text-gray-300">{{ turn.text }}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="detailLoadingFor(ev.id)" class="flex justify-center py-2">
+                <div class="h-5 w-5 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              </div>
+
+              <div v-if="ev.response_text">
+                <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  {{ t('admin.honeypot.events.platformResponse') }}
+                  <span class="ml-1 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                    {{ modeName(ev.response_mode) }}
+                  </span>
+                </div>
+                <pre class="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-green-200 bg-green-50/60 p-3 text-xs text-green-900 dark:border-green-800 dark:bg-green-900/20 dark:text-green-200">{{ ev.response_text }}</pre>
+              </div>
+
               <div v-if="ev.body">
                 <div class="mb-1 flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
                   {{ t('admin.honeypot.events.bodyPreview') }}
@@ -329,7 +367,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
-import { honeypotAPI, type HoneypotConfig, type HoneypotEventItem, type HoneypotKeyItem } from '@/api/admin/honeypot'
+import { honeypotAPI, type HoneypotConfig, type HoneypotEventDetail, type HoneypotEventItem, type HoneypotKeyItem } from '@/api/admin/honeypot'
 import HoneypotConfigForm from '@/views/admin/HoneypotConfigForm.vue'
 import type { Column } from '@/components/common/types'
 
@@ -477,7 +515,64 @@ function loadMoreEvents() {
 }
 
 function toggleEventExpand(id: number) {
-  expandedEventId.value = expandedEventId.value === id ? null : id
+  if (expandedEventId.value === id) {
+    expandedEventId.value = null
+    return
+  }
+  expandedEventId.value = id
+  // 展开时懒加载对话解析详情
+  if (!eventDetails.value[id]) {
+    loadEventDetail(id)
+  }
+}
+
+// ── 事件详情（对话记录）─────────────────────────────────────────
+
+const eventDetails = ref<Record<number, HoneypotEventDetail>>({})
+const eventDetailLoading = ref<Record<number, boolean>>({})
+
+function detailFor(id: number): HoneypotEventDetail | undefined {
+  return eventDetails.value[id]
+}
+
+function detailLoadingFor(id: number): boolean {
+  return !!eventDetailLoading.value[id]
+}
+
+async function loadEventDetail(id: number) {
+  eventDetailLoading.value[id] = true
+  try {
+    const detail = await honeypotAPI.getEvent(id)
+    eventDetails.value[id] = detail
+  } catch (err) {
+    appStore.showToast('error', extractError(err))
+  } finally {
+    delete eventDetailLoading.value[id]
+  }
+}
+
+function roleLabel(role: string): string {
+  const map: Record<string, string> = {
+    system: t('admin.honeypot.events.roleSystem'),
+    user: t('admin.honeypot.events.roleUser'),
+    assistant: t('admin.honeypot.events.roleAssistant'),
+    tool: t('admin.honeypot.events.roleTool')
+  }
+  return map[role] || role
+}
+
+function turnRoleClass(role: string): string {
+  if (role === 'user') return 'border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-900/15'
+  if (role === 'assistant') return 'border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800'
+  if (role === 'tool') return 'border-orange-200 bg-orange-50/50 dark:border-orange-800 dark:bg-orange-900/15'
+  return 'border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-900/15'
+}
+
+function turnRoleBadgeClass(role: string): string {
+  if (role === 'user') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+  if (role === 'assistant') return 'bg-gray-200 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
+  if (role === 'tool') return 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300'
+  return 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
 }
 
 // ── 工具 ────────────────────────────────────────────────────────

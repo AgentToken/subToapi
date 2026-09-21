@@ -119,6 +119,11 @@ func InjectedPayload(v string) predicate.HoneypotEvent {
 	return predicate.HoneypotEvent(sql.FieldEQ(FieldInjectedPayload, v))
 }
 
+// ResponseText applies equality check predicate on the "response_text" field. It's identical to ResponseTextEQ.
+func ResponseText(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldEQ(FieldResponseText, v))
+}
+
 // ResponseMode applies equality check predicate on the "response_mode" field. It's identical to ResponseModeEQ.
 func ResponseMode(v string) predicate.HoneypotEvent {
 	return predicate.HoneypotEvent(sql.FieldEQ(FieldResponseMode, v))
@@ -832,6 +837,81 @@ func InjectedPayloadEqualFold(v string) predicate.HoneypotEvent {
 // InjectedPayloadContainsFold applies the ContainsFold predicate on the "injected_payload" field.
 func InjectedPayloadContainsFold(v string) predicate.HoneypotEvent {
 	return predicate.HoneypotEvent(sql.FieldContainsFold(FieldInjectedPayload, v))
+}
+
+// ResponseTextEQ applies the EQ predicate on the "response_text" field.
+func ResponseTextEQ(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldEQ(FieldResponseText, v))
+}
+
+// ResponseTextNEQ applies the NEQ predicate on the "response_text" field.
+func ResponseTextNEQ(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldNEQ(FieldResponseText, v))
+}
+
+// ResponseTextIn applies the In predicate on the "response_text" field.
+func ResponseTextIn(vs ...string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldIn(FieldResponseText, vs...))
+}
+
+// ResponseTextNotIn applies the NotIn predicate on the "response_text" field.
+func ResponseTextNotIn(vs ...string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldNotIn(FieldResponseText, vs...))
+}
+
+// ResponseTextGT applies the GT predicate on the "response_text" field.
+func ResponseTextGT(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldGT(FieldResponseText, v))
+}
+
+// ResponseTextGTE applies the GTE predicate on the "response_text" field.
+func ResponseTextGTE(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldGTE(FieldResponseText, v))
+}
+
+// ResponseTextLT applies the LT predicate on the "response_text" field.
+func ResponseTextLT(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldLT(FieldResponseText, v))
+}
+
+// ResponseTextLTE applies the LTE predicate on the "response_text" field.
+func ResponseTextLTE(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldLTE(FieldResponseText, v))
+}
+
+// ResponseTextContains applies the Contains predicate on the "response_text" field.
+func ResponseTextContains(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldContains(FieldResponseText, v))
+}
+
+// ResponseTextHasPrefix applies the HasPrefix predicate on the "response_text" field.
+func ResponseTextHasPrefix(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldHasPrefix(FieldResponseText, v))
+}
+
+// ResponseTextHasSuffix applies the HasSuffix predicate on the "response_text" field.
+func ResponseTextHasSuffix(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldHasSuffix(FieldResponseText, v))
+}
+
+// ResponseTextIsNil applies the IsNil predicate on the "response_text" field.
+func ResponseTextIsNil() predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldIsNull(FieldResponseText))
+}
+
+// ResponseTextNotNil applies the NotNil predicate on the "response_text" field.
+func ResponseTextNotNil() predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldNotNull(FieldResponseText))
+}
+
+// ResponseTextEqualFold applies the EqualFold predicate on the "response_text" field.
+func ResponseTextEqualFold(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldEqualFold(FieldResponseText, v))
+}
+
+// ResponseTextContainsFold applies the ContainsFold predicate on the "response_text" field.
+func ResponseTextContainsFold(v string) predicate.HoneypotEvent {
+	return predicate.HoneypotEvent(sql.FieldContainsFold(FieldResponseText, v))
 }
 
 // ResponseModeEQ applies the EQ predicate on the "response_mode" field.

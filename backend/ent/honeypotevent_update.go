@@ -237,6 +237,26 @@ func (_u *HoneypotEventUpdate) ClearInjectedPayload() *HoneypotEventUpdate {
 	return _u
 }
 
+// SetResponseText sets the "response_text" field.
+func (_u *HoneypotEventUpdate) SetResponseText(v string) *HoneypotEventUpdate {
+	_u.mutation.SetResponseText(v)
+	return _u
+}
+
+// SetNillableResponseText sets the "response_text" field if the given value is not nil.
+func (_u *HoneypotEventUpdate) SetNillableResponseText(v *string) *HoneypotEventUpdate {
+	if v != nil {
+		_u.SetResponseText(*v)
+	}
+	return _u
+}
+
+// ClearResponseText clears the value of the "response_text" field.
+func (_u *HoneypotEventUpdate) ClearResponseText() *HoneypotEventUpdate {
+	_u.mutation.ClearResponseText()
+	return _u
+}
+
 // SetResponseMode sets the "response_mode" field.
 func (_u *HoneypotEventUpdate) SetResponseMode(v string) *HoneypotEventUpdate {
 	_u.mutation.SetResponseMode(v)
@@ -388,6 +408,12 @@ func (_u *HoneypotEventUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.InjectedPayloadCleared() {
 		_spec.ClearField(honeypotevent.FieldInjectedPayload, field.TypeString)
+	}
+	if value, ok := _u.mutation.ResponseText(); ok {
+		_spec.SetField(honeypotevent.FieldResponseText, field.TypeString, value)
+	}
+	if _u.mutation.ResponseTextCleared() {
+		_spec.ClearField(honeypotevent.FieldResponseText, field.TypeString)
 	}
 	if value, ok := _u.mutation.ResponseMode(); ok {
 		_spec.SetField(honeypotevent.FieldResponseMode, field.TypeString, value)
@@ -621,6 +647,26 @@ func (_u *HoneypotEventUpdateOne) ClearInjectedPayload() *HoneypotEventUpdateOne
 	return _u
 }
 
+// SetResponseText sets the "response_text" field.
+func (_u *HoneypotEventUpdateOne) SetResponseText(v string) *HoneypotEventUpdateOne {
+	_u.mutation.SetResponseText(v)
+	return _u
+}
+
+// SetNillableResponseText sets the "response_text" field if the given value is not nil.
+func (_u *HoneypotEventUpdateOne) SetNillableResponseText(v *string) *HoneypotEventUpdateOne {
+	if v != nil {
+		_u.SetResponseText(*v)
+	}
+	return _u
+}
+
+// ClearResponseText clears the value of the "response_text" field.
+func (_u *HoneypotEventUpdateOne) ClearResponseText() *HoneypotEventUpdateOne {
+	_u.mutation.ClearResponseText()
+	return _u
+}
+
 // SetResponseMode sets the "response_mode" field.
 func (_u *HoneypotEventUpdateOne) SetResponseMode(v string) *HoneypotEventUpdateOne {
 	_u.mutation.SetResponseMode(v)
@@ -802,6 +848,12 @@ func (_u *HoneypotEventUpdateOne) sqlSave(ctx context.Context) (_node *HoneypotE
 	}
 	if _u.mutation.InjectedPayloadCleared() {
 		_spec.ClearField(honeypotevent.FieldInjectedPayload, field.TypeString)
+	}
+	if value, ok := _u.mutation.ResponseText(); ok {
+		_spec.SetField(honeypotevent.FieldResponseText, field.TypeString, value)
+	}
+	if _u.mutation.ResponseTextCleared() {
+		_spec.ClearField(honeypotevent.FieldResponseText, field.TypeString)
 	}
 	if value, ok := _u.mutation.ResponseMode(); ok {
 		_spec.SetField(honeypotevent.FieldResponseMode, field.TypeString, value)

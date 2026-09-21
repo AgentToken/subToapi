@@ -31,6 +31,7 @@ func (r *honeypotEventRepository) Create(ctx context.Context, e *service.Honeypo
 		SetBody(e.Body).
 		SetBodyTruncated(e.BodyTruncated).
 		SetInjectedPayload(e.InjectedPayload).
+		SetResponseText(e.ResponseText).
 		SetResponseMode(e.ResponseMode)
 	if len(e.Headers) > 0 {
 		builder.SetHeaders(e.Headers)
@@ -45,6 +46,19 @@ func (r *honeypotEventRepository) Create(ctx context.Context, e *service.Honeypo
 	e.ID = created.ID
 	e.CreatedAt = created.CreatedAt
 	return nil
+}
+
+func (r *honeypotEventRepository) GetByID(ctx context.Context, id int64) (*service.HoneypotEvent, error) {
+	m, err := r.client.HoneypotEvent.Query().
+		Where(honeypotevent.IDEQ(id)).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrHoneypotEventNotFound
+		}
+		return nil, err
+	}
+	return honeypotEventEntityToService(m), nil
 }
 
 func (r *honeypotEventRepository) List(ctx context.Context, apiKeyID *int64, offset, limit int) ([]*service.HoneypotEvent, int, error) {
@@ -126,6 +140,7 @@ func honeypotEventEntityToService(m *dbent.HoneypotEvent) *service.HoneypotEvent
 		BodyTruncated:   m.BodyTruncated,
 		Intel:           m.Intel,
 		InjectedPayload: m.InjectedPayload,
+		ResponseText:    m.ResponseText,
 		ResponseMode:    m.ResponseMode,
 		CreatedAt:       m.CreatedAt,
 	}

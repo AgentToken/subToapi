@@ -36,8 +36,22 @@ type HoneypotEvent struct {
 	BodyTruncated   bool           `json:"body_truncated"`
 	Intel           map[string]any `json:"intel,omitempty"`
 	InjectedPayload string         `json:"injected_payload,omitempty"`
-	ResponseMode    string         `json:"response_mode"`
-	CreatedAt       time.Time      `json:"created_at"`
+	// ResponseText 平台实际返回的完整响应文本（转发上游内容 + 注入指令）
+	ResponseText string    `json:"response_text,omitempty"`
+	ResponseMode string    `json:"response_mode"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// HoneypotConversationTurn 从请求体解析出的一轮对话
+type HoneypotConversationTurn struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+// HoneypotEventDetail 事件详情（含解析后的对话记录）
+type HoneypotEventDetail struct {
+	Event        *HoneypotEvent             `json:"event"`
+	Conversation []HoneypotConversationTurn `json:"conversation"`
 }
 
 // HoneypotEventSource 蜜罐事件来源
@@ -49,6 +63,7 @@ const (
 // HoneypotEventRepository 蜜罐事件存储
 type HoneypotEventRepository interface {
 	Create(ctx context.Context, e *HoneypotEvent) error
+	GetByID(ctx context.Context, id int64) (*HoneypotEvent, error)
 	List(ctx context.Context, apiKeyID *int64, offset, limit int) ([]*HoneypotEvent, int, error)
 	CountByKeyIDs(ctx context.Context, keyIDs []int64) (map[int64]int64, error)
 	LastEventByKeyIDs(ctx context.Context, keyIDs []int64) (map[int64]time.Time, error)
@@ -100,6 +115,9 @@ const (
 const HoneypotOOBRoutePath = "/hp/collect/"
 
 var errHoneypotKeyIsHoneypot = errors.New("api key is already a honeypot key")
+
+// ErrHoneypotEventNotFound 蜜罐事件不存在
+var ErrHoneypotEventNotFound = infraerrors.NotFound("HONEYPOT_EVENT_NOT_FOUND", "honeypot event not found")
 
 // HoneypotService 蜜罐 Key 管理与情报采集
 type HoneypotService struct {
@@ -327,6 +345,108 @@ func (s *HoneypotService) ListEvents(ctx context.Context, apiKeyID *int64, page,
 }
 
 // RecordEvent 落一条蜜罐事件（失败只记日志，不影响拦截主流程）
+// GetEventDetail 事件详情：事件本体 + 从请求体解析出的逐轮对话记录。
+// 对话按 Anthropic（system + messages）与 OpenAI（messages）两种格式宽松解析。
+func (s *HoneypotService) GetEventDetail(ctx context.Context, eventID int64) (*HoneypotEventDetail, error) {
+	event, err := s.eventRepo.GetByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	return &HoneypotEventDetail{
+		Event:        event,
+		Conversation: ParseHoneypotConversation(event.Body),
+	}, nil
+}
+
+// honeypotConversationTurnCap 单轮文本展示上限
+const honeypotConversationTurnCap = 24 * 1024
+
+// ParseHoneypotConversation 把蜜罐事件留存的请求体解析为逐轮对话。
+// 解析失败时返回空列表（不影响其他信息展示）。
+func ParseHoneypotConversation(body string) []HoneypotConversationTurn {
+	if body == "" {
+		return nil
+	}
+	turns := make([]HoneypotConversationTurn, 0, 16)
+
+	// Anthropic 格式：顶层 system（字符串或 block 数组）
+	var anthropicStyle struct {
+		System json.RawMessage `json:"system"`
+	}
+	_ = json.Unmarshal([]byte(body), &anthropicStyle)
+	if len(anthropicStyle.System) > 0 {
+		turns = append(turns, honeypotTurnsFromRaw("system", anthropicStyle.System)...)
+	}
+
+	var parsed struct {
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		return turns
+	}
+	for _, m := range parsed.Messages {
+		turns = append(turns, honeypotTurnsFromRaw(m.Role, m.Content)...)
+	}
+	return turns
+}
+
+// honeypotTurnsFromRaw 解析单条消息的 content：
+// 兼容纯字符串、Anthropic block 数组（text / tool_result / tool_use）、OpenAI 数组。
+func honeypotTurnsFromRaw(role string, raw json.RawMessage) []HoneypotConversationTurn {
+	if len(raw) == 0 {
+		return nil
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return []HoneypotConversationTurn{{Role: role, Text: clipTurnText(text)}}
+	}
+	var blocks []struct {
+		Type      string          `json:"type"`
+		Text      string          `json:"text"`
+		ToolUseID string          `json:"tool_use_id"`
+		Name      string          `json:"name"`
+		Input     json.RawMessage `json:"input"`
+		Content   json.RawMessage `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return nil
+	}
+	var out []HoneypotConversationTurn
+	for _, b := range blocks {
+		switch b.Type {
+		case "text":
+			if strings.TrimSpace(b.Text) != "" {
+				out = append(out, HoneypotConversationTurn{Role: role, Text: clipTurnText(b.Text)})
+			}
+		case "tool_use":
+			summary := fmt.Sprintf("[tool_use] %s %s", b.Name, clipTurnText(string(b.Input)))
+			out = append(out, HoneypotConversationTurn{Role: role, Text: summary})
+		case "tool_result":
+			sub := honeypotTurnsFromRaw(role, b.Content)
+			if len(sub) > 0 {
+				out = append(out, HoneypotConversationTurn{
+					Role: "tool",
+					Text: fmt.Sprintf("[tool_result for %s]\n%s", b.ToolUseID, sub[0].Text),
+				})
+			}
+		case "image":
+			out = append(out, HoneypotConversationTurn{Role: role, Text: "[image]"})
+		}
+	}
+	return out
+}
+
+func clipTurnText(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) <= honeypotConversationTurnCap {
+		return text
+	}
+	return text[:honeypotConversationTurnCap] + "\n...(truncated)"
+}
+
 func (s *HoneypotService) RecordEvent(ctx context.Context, e *HoneypotEvent) {
 	recordCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

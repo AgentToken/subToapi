@@ -48,6 +48,8 @@ type HoneypotEvent struct {
 	Intel map[string]interface{} `json:"intel,omitempty"`
 	// InjectedPayload holds the value of the "injected_payload" field.
 	InjectedPayload string `json:"injected_payload,omitempty"`
+	// ResponseText holds the value of the "response_text" field.
+	ResponseText string `json:"response_text,omitempty"`
 	// ResponseMode holds the value of the "response_mode" field.
 	ResponseMode string `json:"response_mode,omitempty"`
 	selectValues sql.SelectValues
@@ -64,7 +66,7 @@ func (*HoneypotEvent) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case honeypotevent.FieldID, honeypotevent.FieldAPIKeyID:
 			values[i] = new(sql.NullInt64)
-		case honeypotevent.FieldSource, honeypotevent.FieldMethod, honeypotevent.FieldPath, honeypotevent.FieldClientIP, honeypotevent.FieldUserAgent, honeypotevent.FieldModel, honeypotevent.FieldBody, honeypotevent.FieldInjectedPayload, honeypotevent.FieldResponseMode:
+		case honeypotevent.FieldSource, honeypotevent.FieldMethod, honeypotevent.FieldPath, honeypotevent.FieldClientIP, honeypotevent.FieldUserAgent, honeypotevent.FieldModel, honeypotevent.FieldBody, honeypotevent.FieldInjectedPayload, honeypotevent.FieldResponseText, honeypotevent.FieldResponseMode:
 			values[i] = new(sql.NullString)
 		case honeypotevent.FieldCreatedAt, honeypotevent.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -183,6 +185,12 @@ func (_m *HoneypotEvent) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.InjectedPayload = value.String
 			}
+		case honeypotevent.FieldResponseText:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field response_text", values[i])
+			} else if value.Valid {
+				_m.ResponseText = value.String
+			}
 		case honeypotevent.FieldResponseMode:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field response_mode", values[i])
@@ -269,6 +277,9 @@ func (_m *HoneypotEvent) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("injected_payload=")
 	builder.WriteString(_m.InjectedPayload)
+	builder.WriteString(", ")
+	builder.WriteString("response_text=")
+	builder.WriteString(_m.ResponseText)
 	builder.WriteString(", ")
 	builder.WriteString("response_mode=")
 	builder.WriteString(_m.ResponseMode)

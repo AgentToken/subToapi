@@ -893,5 +893,6 @@ func registerHoneypotRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		hp.PUT("/keys/:id", h.Admin.Honeypot.UpdateKey)
 		hp.POST("/convert", h.Admin.Honeypot.ConvertKey)
 		hp.GET("/events", h.Admin.Honeypot.ListEvents)
+		hp.GET("/events/:id", h.Admin.Honeypot.GetEvent)
 	}
 }

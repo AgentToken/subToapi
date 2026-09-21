@@ -201,6 +201,26 @@ func (h *AdminHoneypotHandler) ListEvents(c *gin.Context) {
 	})
 }
 
+// GetEvent 蜜罐事件详情（含解析后的逐轮对话记录）
+// GET /api/v1/admin/honeypot/events/:id
+func (h *AdminHoneypotHandler) GetEvent(c *gin.Context) {
+	eventID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid event ID")
+		return
+	}
+	detail, err := h.honeypotService.GetEventDetail(c.Request.Context(), eventID)
+	if err != nil {
+		if errors.Is(err, service.ErrHoneypotEventNotFound) {
+			response.NotFound(c, "Honeypot event not found")
+			return
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, detail)
+}
+
 func honeypotKeyResp(k *service.APIKey) gin.H {
 	cfg := k.HoneypotConfig
 	if cfg != nil {

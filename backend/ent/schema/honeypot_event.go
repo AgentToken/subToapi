@@ -45,6 +45,8 @@ func (HoneypotEvent) Fields() []ent.Field {
 		// 从请求/回传内容中抽取的结构化情报（env_report、git 身份等）
 		field.JSON("intel", map[string]any{}).Optional(),
 		field.Text("injected_payload").Optional(),
+		// 平台实际返回给盗用者的完整响应文本（含转发上游内容 + 注入指令）
+		field.Text("response_text").Optional(),
 		field.String("response_mode").MaxLen(20).Default(""),
 	}
 }
