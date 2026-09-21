@@ -652,8 +652,9 @@ import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
 
 const GITHUB_REPO = 'AgentToken/subToapi'
-// Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)
-const DOCKER_IMAGE = 'weishaw/sub2api'
+// 本 fork 的 CI 只发布 GHCR 镜像（release.yml），勿改回上游 Docker Hub 镜像名，
+// 否则按提示回退会拉到不含本 fork 功能的上游代码
+const DOCKER_IMAGE = 'ghcr.io/agenttoken/sub2api'
 
 const { t } = useI18n()
 
