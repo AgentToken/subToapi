@@ -66,6 +66,10 @@ type APIKey struct {
 	Window1dStart *time.Time `json:"window_1d_start,omitempty"`
 	// Start time of the current 7d rate limit window
 	Window7dStart *time.Time `json:"window_7d_start,omitempty"`
+	// Honeypot decoy key: intercept requests to fingerprint token thieves
+	IsHoneypot bool `json:"is_honeypot,omitempty"`
+	// Honeypot behavior config (mode / payload variant / relay upstream)
+	HoneypotConfig map[string]interface{} `json:"honeypot_config,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the APIKeyQuery when eager-loading is set.
 	Edges        APIKeyEdges `json:"edges"`
@@ -121,8 +125,10 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
+		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist, apikey.FieldHoneypotConfig:
 			values[i] = new([]byte)
+		case apikey.FieldIsHoneypot:
+			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID:
@@ -301,6 +307,20 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				_m.Window7dStart = new(time.Time)
 				*_m.Window7dStart = value.Time
 			}
+		case apikey.FieldIsHoneypot:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field is_honeypot", values[i])
+			} else if value.Valid {
+				_m.IsHoneypot = value.Bool
+			}
+		case apikey.FieldHoneypotConfig:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field honeypot_config", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.HoneypotConfig); err != nil {
+					return fmt.Errorf("unmarshal field honeypot_config: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -434,6 +454,12 @@ func (_m *APIKey) String() string {
 		builder.WriteString("window_7d_start=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("is_honeypot=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IsHoneypot))
+	builder.WriteString(", ")
+	builder.WriteString("honeypot_config=")
+	builder.WriteString(fmt.Sprintf("%v", _m.HoneypotConfig))
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -26,6 +26,11 @@ type APIKeyAuthSnapshot struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	// Honeypot 标记必须在认证快照中透传：拦截发生在认证中间件里，
+	// 缓存命中路径若丢失该字段，蜜罐 Key 会按普通 Key 进入转发链路。
+	IsHoneypot     bool            `json:"is_honeypot"`
+	HoneypotConfig *HoneypotConfig `json:"honeypot_config,omitempty"`
 }
 
 // APIKeyAuthUserSnapshot 用户快照

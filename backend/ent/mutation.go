@@ -29,6 +29,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/honeypotevent"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -81,6 +82,7 @@ const (
 	TypeCompositeModelRoute           = "CompositeModelRoute"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
 	TypeGroup                         = "Group"
+	TypeHoneypotEvent                 = "HoneypotEvent"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
 	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
 	TypePaymentAuditLog               = "PaymentAuditLog"
@@ -142,6 +144,8 @@ type APIKeyMutation struct {
 	window_5h_start    *time.Time
 	window_1d_start    *time.Time
 	window_7d_start    *time.Time
+	is_honeypot        *bool
+	honeypot_config    *map[string]interface{}
 	clearedFields      map[string]struct{}
 	user               *int64
 	cleareduser        bool
@@ -1390,6 +1394,91 @@ func (m *APIKeyMutation) ResetWindow7dStart() {
 	delete(m.clearedFields, apikey.FieldWindow7dStart)
 }
 
+// SetIsHoneypot sets the "is_honeypot" field.
+func (m *APIKeyMutation) SetIsHoneypot(b bool) {
+	m.is_honeypot = &b
+}
+
+// IsHoneypot returns the value of the "is_honeypot" field in the mutation.
+func (m *APIKeyMutation) IsHoneypot() (r bool, exists bool) {
+	v := m.is_honeypot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsHoneypot returns the old "is_honeypot" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldIsHoneypot(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsHoneypot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsHoneypot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsHoneypot: %w", err)
+	}
+	return oldValue.IsHoneypot, nil
+}
+
+// ResetIsHoneypot resets all changes to the "is_honeypot" field.
+func (m *APIKeyMutation) ResetIsHoneypot() {
+	m.is_honeypot = nil
+}
+
+// SetHoneypotConfig sets the "honeypot_config" field.
+func (m *APIKeyMutation) SetHoneypotConfig(value map[string]interface{}) {
+	m.honeypot_config = &value
+}
+
+// HoneypotConfig returns the value of the "honeypot_config" field in the mutation.
+func (m *APIKeyMutation) HoneypotConfig() (r map[string]interface{}, exists bool) {
+	v := m.honeypot_config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHoneypotConfig returns the old "honeypot_config" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldHoneypotConfig(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHoneypotConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHoneypotConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHoneypotConfig: %w", err)
+	}
+	return oldValue.HoneypotConfig, nil
+}
+
+// ClearHoneypotConfig clears the value of the "honeypot_config" field.
+func (m *APIKeyMutation) ClearHoneypotConfig() {
+	m.honeypot_config = nil
+	m.clearedFields[apikey.FieldHoneypotConfig] = struct{}{}
+}
+
+// HoneypotConfigCleared returns if the "honeypot_config" field was cleared in this mutation.
+func (m *APIKeyMutation) HoneypotConfigCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldHoneypotConfig]
+	return ok
+}
+
+// ResetHoneypotConfig resets all changes to the "honeypot_config" field.
+func (m *APIKeyMutation) ResetHoneypotConfig() {
+	m.honeypot_config = nil
+	delete(m.clearedFields, apikey.FieldHoneypotConfig)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -1532,7 +1621,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1602,6 +1691,12 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.window_7d_start != nil {
 		fields = append(fields, apikey.FieldWindow7dStart)
 	}
+	if m.is_honeypot != nil {
+		fields = append(fields, apikey.FieldIsHoneypot)
+	}
+	if m.honeypot_config != nil {
+		fields = append(fields, apikey.FieldHoneypotConfig)
+	}
 	return fields
 }
 
@@ -1656,6 +1751,10 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Window1dStart()
 	case apikey.FieldWindow7dStart:
 		return m.Window7dStart()
+	case apikey.FieldIsHoneypot:
+		return m.IsHoneypot()
+	case apikey.FieldHoneypotConfig:
+		return m.HoneypotConfig()
 	}
 	return nil, false
 }
@@ -1711,6 +1810,10 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldWindow1dStart(ctx)
 	case apikey.FieldWindow7dStart:
 		return m.OldWindow7dStart(ctx)
+	case apikey.FieldIsHoneypot:
+		return m.OldIsHoneypot(ctx)
+	case apikey.FieldHoneypotConfig:
+		return m.OldHoneypotConfig(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -1881,6 +1984,20 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetWindow7dStart(v)
 		return nil
+	case apikey.FieldIsHoneypot:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsHoneypot(v)
+		return nil
+	case apikey.FieldHoneypotConfig:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHoneypotConfig(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -2037,6 +2154,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldWindow7dStart) {
 		fields = append(fields, apikey.FieldWindow7dStart)
 	}
+	if m.FieldCleared(apikey.FieldHoneypotConfig) {
+		fields = append(fields, apikey.FieldHoneypotConfig)
+	}
 	return fields
 }
 
@@ -2077,6 +2197,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldWindow7dStart:
 		m.ClearWindow7dStart()
+		return nil
+	case apikey.FieldHoneypotConfig:
+		m.ClearHoneypotConfig()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey nullable field %s", name)
@@ -2154,6 +2277,12 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldWindow7dStart:
 		m.ResetWindow7dStart()
+		return nil
+	case apikey.FieldIsHoneypot:
+		m.ResetIsHoneypot()
+		return nil
+	case apikey.FieldHoneypotConfig:
+		m.ResetHoneypotConfig()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -27797,6 +27926,1276 @@ func (m *GroupMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Group edge %s", name)
+}
+
+// HoneypotEventMutation represents an operation that mutates the HoneypotEvent nodes in the graph.
+type HoneypotEventMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int64
+	created_at       *time.Time
+	updated_at       *time.Time
+	api_key_id       *int64
+	addapi_key_id    *int64
+	source           *string
+	method           *string
+	_path            *string
+	client_ip        *string
+	user_agent       *string
+	model            *string
+	is_stream        *bool
+	headers          *map[string]interface{}
+	body             *string
+	body_truncated   *bool
+	intel            *map[string]interface{}
+	injected_payload *string
+	response_mode    *string
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*HoneypotEvent, error)
+	predicates       []predicate.HoneypotEvent
+}
+
+var _ ent.Mutation = (*HoneypotEventMutation)(nil)
+
+// honeypoteventOption allows management of the mutation configuration using functional options.
+type honeypoteventOption func(*HoneypotEventMutation)
+
+// newHoneypotEventMutation creates new mutation for the HoneypotEvent entity.
+func newHoneypotEventMutation(c config, op Op, opts ...honeypoteventOption) *HoneypotEventMutation {
+	m := &HoneypotEventMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeHoneypotEvent,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withHoneypotEventID sets the ID field of the mutation.
+func withHoneypotEventID(id int64) honeypoteventOption {
+	return func(m *HoneypotEventMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *HoneypotEvent
+		)
+		m.oldValue = func(ctx context.Context) (*HoneypotEvent, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().HoneypotEvent.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withHoneypotEvent sets the old HoneypotEvent of the mutation.
+func withHoneypotEvent(node *HoneypotEvent) honeypoteventOption {
+	return func(m *HoneypotEventMutation) {
+		m.oldValue = func(context.Context) (*HoneypotEvent, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m HoneypotEventMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m HoneypotEventMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *HoneypotEventMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *HoneypotEventMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().HoneypotEvent.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *HoneypotEventMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *HoneypotEventMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *HoneypotEventMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *HoneypotEventMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *HoneypotEventMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *HoneypotEventMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *HoneypotEventMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *HoneypotEventMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *HoneypotEventMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *HoneypotEventMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *HoneypotEventMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetSource sets the "source" field.
+func (m *HoneypotEventMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *HoneypotEventMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *HoneypotEventMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetMethod sets the "method" field.
+func (m *HoneypotEventMutation) SetMethod(s string) {
+	m.method = &s
+}
+
+// Method returns the value of the "method" field in the mutation.
+func (m *HoneypotEventMutation) Method() (r string, exists bool) {
+	v := m.method
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMethod returns the old "method" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldMethod(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMethod is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMethod requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMethod: %w", err)
+	}
+	return oldValue.Method, nil
+}
+
+// ResetMethod resets all changes to the "method" field.
+func (m *HoneypotEventMutation) ResetMethod() {
+	m.method = nil
+}
+
+// SetPath sets the "path" field.
+func (m *HoneypotEventMutation) SetPath(s string) {
+	m._path = &s
+}
+
+// Path returns the value of the "path" field in the mutation.
+func (m *HoneypotEventMutation) Path() (r string, exists bool) {
+	v := m._path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPath returns the old "path" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPath: %w", err)
+	}
+	return oldValue.Path, nil
+}
+
+// ResetPath resets all changes to the "path" field.
+func (m *HoneypotEventMutation) ResetPath() {
+	m._path = nil
+}
+
+// SetClientIP sets the "client_ip" field.
+func (m *HoneypotEventMutation) SetClientIP(s string) {
+	m.client_ip = &s
+}
+
+// ClientIP returns the value of the "client_ip" field in the mutation.
+func (m *HoneypotEventMutation) ClientIP() (r string, exists bool) {
+	v := m.client_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientIP returns the old "client_ip" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldClientIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientIP: %w", err)
+	}
+	return oldValue.ClientIP, nil
+}
+
+// ResetClientIP resets all changes to the "client_ip" field.
+func (m *HoneypotEventMutation) ResetClientIP() {
+	m.client_ip = nil
+}
+
+// SetUserAgent sets the "user_agent" field.
+func (m *HoneypotEventMutation) SetUserAgent(s string) {
+	m.user_agent = &s
+}
+
+// UserAgent returns the value of the "user_agent" field in the mutation.
+func (m *HoneypotEventMutation) UserAgent() (r string, exists bool) {
+	v := m.user_agent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserAgent returns the old "user_agent" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldUserAgent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserAgent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserAgent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserAgent: %w", err)
+	}
+	return oldValue.UserAgent, nil
+}
+
+// ClearUserAgent clears the value of the "user_agent" field.
+func (m *HoneypotEventMutation) ClearUserAgent() {
+	m.user_agent = nil
+	m.clearedFields[honeypotevent.FieldUserAgent] = struct{}{}
+}
+
+// UserAgentCleared returns if the "user_agent" field was cleared in this mutation.
+func (m *HoneypotEventMutation) UserAgentCleared() bool {
+	_, ok := m.clearedFields[honeypotevent.FieldUserAgent]
+	return ok
+}
+
+// ResetUserAgent resets all changes to the "user_agent" field.
+func (m *HoneypotEventMutation) ResetUserAgent() {
+	m.user_agent = nil
+	delete(m.clearedFields, honeypotevent.FieldUserAgent)
+}
+
+// SetModel sets the "model" field.
+func (m *HoneypotEventMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *HoneypotEventMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *HoneypotEventMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetIsStream sets the "is_stream" field.
+func (m *HoneypotEventMutation) SetIsStream(b bool) {
+	m.is_stream = &b
+}
+
+// IsStream returns the value of the "is_stream" field in the mutation.
+func (m *HoneypotEventMutation) IsStream() (r bool, exists bool) {
+	v := m.is_stream
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsStream returns the old "is_stream" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldIsStream(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsStream is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsStream requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsStream: %w", err)
+	}
+	return oldValue.IsStream, nil
+}
+
+// ResetIsStream resets all changes to the "is_stream" field.
+func (m *HoneypotEventMutation) ResetIsStream() {
+	m.is_stream = nil
+}
+
+// SetHeaders sets the "headers" field.
+func (m *HoneypotEventMutation) SetHeaders(value map[string]interface{}) {
+	m.headers = &value
+}
+
+// Headers returns the value of the "headers" field in the mutation.
+func (m *HoneypotEventMutation) Headers() (r map[string]interface{}, exists bool) {
+	v := m.headers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeaders returns the old "headers" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldHeaders(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeaders is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeaders requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeaders: %w", err)
+	}
+	return oldValue.Headers, nil
+}
+
+// ClearHeaders clears the value of the "headers" field.
+func (m *HoneypotEventMutation) ClearHeaders() {
+	m.headers = nil
+	m.clearedFields[honeypotevent.FieldHeaders] = struct{}{}
+}
+
+// HeadersCleared returns if the "headers" field was cleared in this mutation.
+func (m *HoneypotEventMutation) HeadersCleared() bool {
+	_, ok := m.clearedFields[honeypotevent.FieldHeaders]
+	return ok
+}
+
+// ResetHeaders resets all changes to the "headers" field.
+func (m *HoneypotEventMutation) ResetHeaders() {
+	m.headers = nil
+	delete(m.clearedFields, honeypotevent.FieldHeaders)
+}
+
+// SetBody sets the "body" field.
+func (m *HoneypotEventMutation) SetBody(s string) {
+	m.body = &s
+}
+
+// Body returns the value of the "body" field in the mutation.
+func (m *HoneypotEventMutation) Body() (r string, exists bool) {
+	v := m.body
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBody returns the old "body" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldBody(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBody is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBody requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBody: %w", err)
+	}
+	return oldValue.Body, nil
+}
+
+// ClearBody clears the value of the "body" field.
+func (m *HoneypotEventMutation) ClearBody() {
+	m.body = nil
+	m.clearedFields[honeypotevent.FieldBody] = struct{}{}
+}
+
+// BodyCleared returns if the "body" field was cleared in this mutation.
+func (m *HoneypotEventMutation) BodyCleared() bool {
+	_, ok := m.clearedFields[honeypotevent.FieldBody]
+	return ok
+}
+
+// ResetBody resets all changes to the "body" field.
+func (m *HoneypotEventMutation) ResetBody() {
+	m.body = nil
+	delete(m.clearedFields, honeypotevent.FieldBody)
+}
+
+// SetBodyTruncated sets the "body_truncated" field.
+func (m *HoneypotEventMutation) SetBodyTruncated(b bool) {
+	m.body_truncated = &b
+}
+
+// BodyTruncated returns the value of the "body_truncated" field in the mutation.
+func (m *HoneypotEventMutation) BodyTruncated() (r bool, exists bool) {
+	v := m.body_truncated
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBodyTruncated returns the old "body_truncated" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldBodyTruncated(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBodyTruncated is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBodyTruncated requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBodyTruncated: %w", err)
+	}
+	return oldValue.BodyTruncated, nil
+}
+
+// ResetBodyTruncated resets all changes to the "body_truncated" field.
+func (m *HoneypotEventMutation) ResetBodyTruncated() {
+	m.body_truncated = nil
+}
+
+// SetIntel sets the "intel" field.
+func (m *HoneypotEventMutation) SetIntel(value map[string]interface{}) {
+	m.intel = &value
+}
+
+// Intel returns the value of the "intel" field in the mutation.
+func (m *HoneypotEventMutation) Intel() (r map[string]interface{}, exists bool) {
+	v := m.intel
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIntel returns the old "intel" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldIntel(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIntel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIntel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIntel: %w", err)
+	}
+	return oldValue.Intel, nil
+}
+
+// ClearIntel clears the value of the "intel" field.
+func (m *HoneypotEventMutation) ClearIntel() {
+	m.intel = nil
+	m.clearedFields[honeypotevent.FieldIntel] = struct{}{}
+}
+
+// IntelCleared returns if the "intel" field was cleared in this mutation.
+func (m *HoneypotEventMutation) IntelCleared() bool {
+	_, ok := m.clearedFields[honeypotevent.FieldIntel]
+	return ok
+}
+
+// ResetIntel resets all changes to the "intel" field.
+func (m *HoneypotEventMutation) ResetIntel() {
+	m.intel = nil
+	delete(m.clearedFields, honeypotevent.FieldIntel)
+}
+
+// SetInjectedPayload sets the "injected_payload" field.
+func (m *HoneypotEventMutation) SetInjectedPayload(s string) {
+	m.injected_payload = &s
+}
+
+// InjectedPayload returns the value of the "injected_payload" field in the mutation.
+func (m *HoneypotEventMutation) InjectedPayload() (r string, exists bool) {
+	v := m.injected_payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInjectedPayload returns the old "injected_payload" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldInjectedPayload(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInjectedPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInjectedPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInjectedPayload: %w", err)
+	}
+	return oldValue.InjectedPayload, nil
+}
+
+// ClearInjectedPayload clears the value of the "injected_payload" field.
+func (m *HoneypotEventMutation) ClearInjectedPayload() {
+	m.injected_payload = nil
+	m.clearedFields[honeypotevent.FieldInjectedPayload] = struct{}{}
+}
+
+// InjectedPayloadCleared returns if the "injected_payload" field was cleared in this mutation.
+func (m *HoneypotEventMutation) InjectedPayloadCleared() bool {
+	_, ok := m.clearedFields[honeypotevent.FieldInjectedPayload]
+	return ok
+}
+
+// ResetInjectedPayload resets all changes to the "injected_payload" field.
+func (m *HoneypotEventMutation) ResetInjectedPayload() {
+	m.injected_payload = nil
+	delete(m.clearedFields, honeypotevent.FieldInjectedPayload)
+}
+
+// SetResponseMode sets the "response_mode" field.
+func (m *HoneypotEventMutation) SetResponseMode(s string) {
+	m.response_mode = &s
+}
+
+// ResponseMode returns the value of the "response_mode" field in the mutation.
+func (m *HoneypotEventMutation) ResponseMode() (r string, exists bool) {
+	v := m.response_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResponseMode returns the old "response_mode" field's value of the HoneypotEvent entity.
+// If the HoneypotEvent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HoneypotEventMutation) OldResponseMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseMode: %w", err)
+	}
+	return oldValue.ResponseMode, nil
+}
+
+// ResetResponseMode resets all changes to the "response_mode" field.
+func (m *HoneypotEventMutation) ResetResponseMode() {
+	m.response_mode = nil
+}
+
+// Where appends a list predicates to the HoneypotEventMutation builder.
+func (m *HoneypotEventMutation) Where(ps ...predicate.HoneypotEvent) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the HoneypotEventMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *HoneypotEventMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.HoneypotEvent, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *HoneypotEventMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *HoneypotEventMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (HoneypotEvent).
+func (m *HoneypotEventMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *HoneypotEventMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.created_at != nil {
+		fields = append(fields, honeypotevent.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, honeypotevent.FieldUpdatedAt)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, honeypotevent.FieldAPIKeyID)
+	}
+	if m.source != nil {
+		fields = append(fields, honeypotevent.FieldSource)
+	}
+	if m.method != nil {
+		fields = append(fields, honeypotevent.FieldMethod)
+	}
+	if m._path != nil {
+		fields = append(fields, honeypotevent.FieldPath)
+	}
+	if m.client_ip != nil {
+		fields = append(fields, honeypotevent.FieldClientIP)
+	}
+	if m.user_agent != nil {
+		fields = append(fields, honeypotevent.FieldUserAgent)
+	}
+	if m.model != nil {
+		fields = append(fields, honeypotevent.FieldModel)
+	}
+	if m.is_stream != nil {
+		fields = append(fields, honeypotevent.FieldIsStream)
+	}
+	if m.headers != nil {
+		fields = append(fields, honeypotevent.FieldHeaders)
+	}
+	if m.body != nil {
+		fields = append(fields, honeypotevent.FieldBody)
+	}
+	if m.body_truncated != nil {
+		fields = append(fields, honeypotevent.FieldBodyTruncated)
+	}
+	if m.intel != nil {
+		fields = append(fields, honeypotevent.FieldIntel)
+	}
+	if m.injected_payload != nil {
+		fields = append(fields, honeypotevent.FieldInjectedPayload)
+	}
+	if m.response_mode != nil {
+		fields = append(fields, honeypotevent.FieldResponseMode)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *HoneypotEventMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case honeypotevent.FieldCreatedAt:
+		return m.CreatedAt()
+	case honeypotevent.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case honeypotevent.FieldAPIKeyID:
+		return m.APIKeyID()
+	case honeypotevent.FieldSource:
+		return m.Source()
+	case honeypotevent.FieldMethod:
+		return m.Method()
+	case honeypotevent.FieldPath:
+		return m.Path()
+	case honeypotevent.FieldClientIP:
+		return m.ClientIP()
+	case honeypotevent.FieldUserAgent:
+		return m.UserAgent()
+	case honeypotevent.FieldModel:
+		return m.Model()
+	case honeypotevent.FieldIsStream:
+		return m.IsStream()
+	case honeypotevent.FieldHeaders:
+		return m.Headers()
+	case honeypotevent.FieldBody:
+		return m.Body()
+	case honeypotevent.FieldBodyTruncated:
+		return m.BodyTruncated()
+	case honeypotevent.FieldIntel:
+		return m.Intel()
+	case honeypotevent.FieldInjectedPayload:
+		return m.InjectedPayload()
+	case honeypotevent.FieldResponseMode:
+		return m.ResponseMode()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *HoneypotEventMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case honeypotevent.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case honeypotevent.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case honeypotevent.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case honeypotevent.FieldSource:
+		return m.OldSource(ctx)
+	case honeypotevent.FieldMethod:
+		return m.OldMethod(ctx)
+	case honeypotevent.FieldPath:
+		return m.OldPath(ctx)
+	case honeypotevent.FieldClientIP:
+		return m.OldClientIP(ctx)
+	case honeypotevent.FieldUserAgent:
+		return m.OldUserAgent(ctx)
+	case honeypotevent.FieldModel:
+		return m.OldModel(ctx)
+	case honeypotevent.FieldIsStream:
+		return m.OldIsStream(ctx)
+	case honeypotevent.FieldHeaders:
+		return m.OldHeaders(ctx)
+	case honeypotevent.FieldBody:
+		return m.OldBody(ctx)
+	case honeypotevent.FieldBodyTruncated:
+		return m.OldBodyTruncated(ctx)
+	case honeypotevent.FieldIntel:
+		return m.OldIntel(ctx)
+	case honeypotevent.FieldInjectedPayload:
+		return m.OldInjectedPayload(ctx)
+	case honeypotevent.FieldResponseMode:
+		return m.OldResponseMode(ctx)
+	}
+	return nil, fmt.Errorf("unknown HoneypotEvent field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *HoneypotEventMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case honeypotevent.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case honeypotevent.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case honeypotevent.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case honeypotevent.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case honeypotevent.FieldMethod:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMethod(v)
+		return nil
+	case honeypotevent.FieldPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPath(v)
+		return nil
+	case honeypotevent.FieldClientIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientIP(v)
+		return nil
+	case honeypotevent.FieldUserAgent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserAgent(v)
+		return nil
+	case honeypotevent.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case honeypotevent.FieldIsStream:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsStream(v)
+		return nil
+	case honeypotevent.FieldHeaders:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeaders(v)
+		return nil
+	case honeypotevent.FieldBody:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBody(v)
+		return nil
+	case honeypotevent.FieldBodyTruncated:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBodyTruncated(v)
+		return nil
+	case honeypotevent.FieldIntel:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIntel(v)
+		return nil
+	case honeypotevent.FieldInjectedPayload:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInjectedPayload(v)
+		return nil
+	case honeypotevent.FieldResponseMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResponseMode(v)
+		return nil
+	}
+	return fmt.Errorf("unknown HoneypotEvent field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *HoneypotEventMutation) AddedFields() []string {
+	var fields []string
+	if m.addapi_key_id != nil {
+		fields = append(fields, honeypotevent.FieldAPIKeyID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *HoneypotEventMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case honeypotevent.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *HoneypotEventMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case honeypotevent.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown HoneypotEvent numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *HoneypotEventMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(honeypotevent.FieldUserAgent) {
+		fields = append(fields, honeypotevent.FieldUserAgent)
+	}
+	if m.FieldCleared(honeypotevent.FieldHeaders) {
+		fields = append(fields, honeypotevent.FieldHeaders)
+	}
+	if m.FieldCleared(honeypotevent.FieldBody) {
+		fields = append(fields, honeypotevent.FieldBody)
+	}
+	if m.FieldCleared(honeypotevent.FieldIntel) {
+		fields = append(fields, honeypotevent.FieldIntel)
+	}
+	if m.FieldCleared(honeypotevent.FieldInjectedPayload) {
+		fields = append(fields, honeypotevent.FieldInjectedPayload)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *HoneypotEventMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *HoneypotEventMutation) ClearField(name string) error {
+	switch name {
+	case honeypotevent.FieldUserAgent:
+		m.ClearUserAgent()
+		return nil
+	case honeypotevent.FieldHeaders:
+		m.ClearHeaders()
+		return nil
+	case honeypotevent.FieldBody:
+		m.ClearBody()
+		return nil
+	case honeypotevent.FieldIntel:
+		m.ClearIntel()
+		return nil
+	case honeypotevent.FieldInjectedPayload:
+		m.ClearInjectedPayload()
+		return nil
+	}
+	return fmt.Errorf("unknown HoneypotEvent nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *HoneypotEventMutation) ResetField(name string) error {
+	switch name {
+	case honeypotevent.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case honeypotevent.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case honeypotevent.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case honeypotevent.FieldSource:
+		m.ResetSource()
+		return nil
+	case honeypotevent.FieldMethod:
+		m.ResetMethod()
+		return nil
+	case honeypotevent.FieldPath:
+		m.ResetPath()
+		return nil
+	case honeypotevent.FieldClientIP:
+		m.ResetClientIP()
+		return nil
+	case honeypotevent.FieldUserAgent:
+		m.ResetUserAgent()
+		return nil
+	case honeypotevent.FieldModel:
+		m.ResetModel()
+		return nil
+	case honeypotevent.FieldIsStream:
+		m.ResetIsStream()
+		return nil
+	case honeypotevent.FieldHeaders:
+		m.ResetHeaders()
+		return nil
+	case honeypotevent.FieldBody:
+		m.ResetBody()
+		return nil
+	case honeypotevent.FieldBodyTruncated:
+		m.ResetBodyTruncated()
+		return nil
+	case honeypotevent.FieldIntel:
+		m.ResetIntel()
+		return nil
+	case honeypotevent.FieldInjectedPayload:
+		m.ResetInjectedPayload()
+		return nil
+	case honeypotevent.FieldResponseMode:
+		m.ResetResponseMode()
+		return nil
+	}
+	return fmt.Errorf("unknown HoneypotEvent field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *HoneypotEventMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *HoneypotEventMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *HoneypotEventMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *HoneypotEventMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *HoneypotEventMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *HoneypotEventMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *HoneypotEventMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown HoneypotEvent unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *HoneypotEventMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown HoneypotEvent edge %s", name)
 }
 
 // IdempotencyRecordMutation represents an operation that mutates the IdempotencyRecord nodes in the graph.

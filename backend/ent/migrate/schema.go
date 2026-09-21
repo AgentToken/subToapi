@@ -33,6 +33,8 @@ var (
 		{Name: "window_5h_start", Type: field.TypeTime, Nullable: true},
 		{Name: "window_1d_start", Type: field.TypeTime, Nullable: true},
 		{Name: "window_7d_start", Type: field.TypeTime, Nullable: true},
+		{Name: "is_honeypot", Type: field.TypeBool, Default: false},
+		{Name: "honeypot_config", Type: field.TypeJSON, Nullable: true},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "user_id", Type: field.TypeInt64},
 	}
@@ -44,13 +46,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[22]},
+				Columns:    []*schema.Column{APIKeysColumns[24]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[23]},
+				Columns:    []*schema.Column{APIKeysColumns[25]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -59,12 +61,12 @@ var (
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[23]},
+				Columns: []*schema.Column{APIKeysColumns[25]},
 			},
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[22]},
+				Columns: []*schema.Column{APIKeysColumns[24]},
 			},
 			{
 				Name:    "apikey_status",
@@ -1013,6 +1015,39 @@ var (
 				Annotation: &entsql.IndexAnnotation{
 					Where: "duplicate_operation_id IS NOT NULL AND deleted_at IS NULL",
 				},
+			},
+		},
+	}
+	// HoneypotEventsColumns holds the columns for the "honeypot_events" table.
+	HoneypotEventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "source", Type: field.TypeString, Size: 20, Default: "gateway"},
+		{Name: "method", Type: field.TypeString, Size: 10, Default: ""},
+		{Name: "path", Type: field.TypeString, Default: ""},
+		{Name: "client_ip", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "user_agent", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "model", Type: field.TypeString, Default: ""},
+		{Name: "is_stream", Type: field.TypeBool, Default: false},
+		{Name: "headers", Type: field.TypeJSON, Nullable: true},
+		{Name: "body", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "body_truncated", Type: field.TypeBool, Default: false},
+		{Name: "intel", Type: field.TypeJSON, Nullable: true},
+		{Name: "injected_payload", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "response_mode", Type: field.TypeString, Size: 20, Default: ""},
+	}
+	// HoneypotEventsTable holds the schema information for the "honeypot_events" table.
+	HoneypotEventsTable = &schema.Table{
+		Name:       "honeypot_events",
+		Columns:    HoneypotEventsColumns,
+		PrimaryKey: []*schema.Column{HoneypotEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "honeypotevent_api_key_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{HoneypotEventsColumns[3], HoneypotEventsColumns[1]},
 			},
 		},
 	}
@@ -2105,6 +2140,7 @@ var (
 		CompositeModelRoutesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
+		HoneypotEventsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
 		PaymentAuditLogsTable,
@@ -2195,6 +2231,9 @@ func init() {
 	}
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
+	}
+	HoneypotEventsTable.Annotation = &entsql.Annotation{
+		Table: "honeypot_events",
 	}
 	IdempotencyRecordsTable.Annotation = &entsql.Annotation{
 		Table: "idempotency_records",

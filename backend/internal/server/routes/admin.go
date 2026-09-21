@@ -108,6 +108,7 @@ func RegisterAdminRoutes(
 
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
+		registerHoneypotRoutes(admin, h)
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
@@ -881,5 +882,16 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 			return
 		}
 		c.Next()
+	}
+}
+
+func registerHoneypotRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	hp := admin.Group("/honeypot")
+	{
+		hp.POST("/keys", h.Admin.Honeypot.CreateKey)
+		hp.GET("/keys", h.Admin.Honeypot.ListKeys)
+		hp.PUT("/keys/:id", h.Admin.Honeypot.UpdateKey)
+		hp.POST("/convert", h.Admin.Honeypot.ConvertKey)
+		hp.GET("/events", h.Admin.Honeypot.ListEvents)
 	}
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 23 // v23: group codex_models_manifest_config field
+const apiKeyAuthSnapshotVersion = 24 // v24: api key honeypot flag/config
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -350,6 +350,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		RateLimit5h: apiKey.RateLimit5h,
 		RateLimit1d: apiKey.RateLimit1d,
 		RateLimit7d: apiKey.RateLimit7d,
+		IsHoneypot:  apiKey.IsHoneypot,
+		// 复制一份，避免缓存快照与调用方共享可变配置指针
+		HoneypotConfig: normalizeHoneypotSnapshotConfig(apiKey.HoneypotConfig),
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
 			Status:                     apiKey.User.Status,
@@ -459,6 +462,14 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		RateLimit5h: snapshot.RateLimit5h,
 		RateLimit1d: snapshot.RateLimit1d,
 		RateLimit7d: snapshot.RateLimit7d,
+		IsHoneypot:  snapshot.IsHoneypot,
+		HoneypotConfig: func() *HoneypotConfig {
+			if snapshot.HoneypotConfig == nil {
+				return nil
+			}
+			cfgCopy := *snapshot.HoneypotConfig
+			return &cfgCopy
+		}(),
 		User: &User{
 			ID:                         snapshot.User.ID,
 			Status:                     snapshot.User.Status,

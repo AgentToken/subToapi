@@ -1,0 +1,94 @@
+export default {
+  honeypot: {
+    title: '蜜罐密钥',
+    description: '蜜罐 Key 不会转发到上游，而是记录盗用者的完整请求，并在响应中注入指纹采集指令，帮助定位泄露 token 的攻击者身份。',
+    notice:
+      '蜜罐 Key 仅在管理员显式创建/转换时生效，普通 Key 的转发与计费链路完全不受影响。请在授权范围内使用采集到的信息。',
+    create: {
+      title: '创建蜜罐 Key',
+      name: '名称',
+      namePlaceholder: '例如：github-leak-canary-01',
+      mode: '响应模式',
+      modeSynthetic: '纯合成（不依赖上游）',
+      modeRelay: '真实转发 + 注入（更难识破）',
+      payload: '注入模板',
+      payloadEnvVerify: '环境校验（system-reminder）',
+      payloadRegionCheck: '区域合规检查',
+      payloadOOB: 'OOB 外呼探测',
+      customPayload: '自定义注入文本',
+      customPayloadPlaceholder: '留空使用内置模板；可用 MARKER 与 COLLECTOR_URL 两个占位符（双花括号包裹）',
+      relayEndpoint: '转发上游地址',
+      relayEndpointPlaceholder: 'https://provider.example.com/v1/chat/completions',
+      relayApiKey: '转发上游密钥',
+      relayModel: '转发上游模型',
+      submit: '创建蜜罐 Key',
+      createdTitle: '蜜罐 Key 已创建',
+      createdKeyHint: '请立即复制，该明文不会再次显示：',
+      markerHint: '水印标记（用于区分泄露渠道与关联回传）'
+    },
+    convert: {
+      title: '转换已泄露的 Key',
+      desc: '输入已泄露 Key 的 ID，将其原地转为蜜罐：原属主的真实 Key 立即作废，盗用者手中的 Key 字符串继续可用但已被接管。',
+      keyId: 'API Key ID',
+      keyIdPlaceholder: '例如：123（可在用户详情页找到）',
+      issueReplacement: '为原属主补发一把全新 Key',
+      submit: '执行转换',
+      resultTitle: '转换完成',
+      replacementHint: '新补发 Key 的明文（仅此一次，请立即交付给用户）：'
+    },
+    keys: {
+      title: '蜜罐 Key 列表',
+      name: '名称',
+      key: 'Key',
+      status: '状态',
+      mode: '模式',
+      events: '命中次数',
+      lastEvent: '最近命中',
+      owner: '属主',
+      actions: '操作',
+      viewEvents: '查看事件',
+      empty: '还没有蜜罐 Key，先创建一个或转换一把已泄露的 Key',
+      disable: '停用',
+      enable: '启用',
+      disableConfirmTitle: '停用蜜罐 Key',
+      disableConfirmMessage: '停用后盗用者会立即看到 Key 失效（401），确定要停用吗？'
+    },
+    mode: {
+      synthetic: '纯合成',
+      relay: '转发+注入',
+      relay_fallback: '转发(降级)',
+      unknown: '—'
+    },
+    payloadLabel: {
+      env_verify: '环境校验',
+      region_check: '区域合规',
+      oob_ping: 'OOB 探测',
+      custom: '自定义',
+      unknown: '—'
+    },
+    events: {
+      title: '命中事件',
+      subtitle: '{name} 的请求记录与回传情报',
+      time: '时间',
+      source: '来源',
+      sourceGateway: '网关请求',
+      sourceOob: 'OOB 回传',
+      clientIp: '来源 IP',
+      model: '模型',
+      responseMode: '响应模式',
+      intel: '抽取到的情报',
+      envReport: '环境报告（env_report）',
+      gitEmail: 'Git 邮箱',
+      homePath: '用户路径',
+      gitRemote: 'Git 远端',
+      os: '操作系统',
+      emailsInPrompt: '对话中出现的邮箱',
+      bodyPreview: '请求体',
+      payload: '已注入的指令',
+      ua: 'User-Agent',
+      empty: '该 Key 还没有被命中过',
+      total: '共 {n} 条',
+      loadMore: '加载更多'
+    }
+  }
+}

@@ -75,6 +75,8 @@ type APIKeyUpdateFields struct {
 	RateLimitUsage bool
 	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
 	IPRules bool
+	// Honeypot 覆盖 is_honeypot 与 honeypot_config。
+	Honeypot bool
 }
 
 // IsEmpty 报告该次 Update 是否不写任何列。
@@ -104,6 +106,8 @@ type APIKeyRepository interface {
 	ExistsByKey(ctx context.Context, key string) (bool, error)
 	ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error)
 	SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error)
+	// ListHoneypotKeys 返回全部蜜罐 Key（按创建时间倒序，limit<=0 表示不分页）
+	ListHoneypotKeys(ctx context.Context, limit int) ([]APIKey, error)
 	ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error)
 	// UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
 	UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error)

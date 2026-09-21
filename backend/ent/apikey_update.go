@@ -438,6 +438,32 @@ func (_u *APIKeyUpdate) ClearWindow7dStart() *APIKeyUpdate {
 	return _u
 }
 
+// SetIsHoneypot sets the "is_honeypot" field.
+func (_u *APIKeyUpdate) SetIsHoneypot(v bool) *APIKeyUpdate {
+	_u.mutation.SetIsHoneypot(v)
+	return _u
+}
+
+// SetNillableIsHoneypot sets the "is_honeypot" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableIsHoneypot(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetIsHoneypot(*v)
+	}
+	return _u
+}
+
+// SetHoneypotConfig sets the "honeypot_config" field.
+func (_u *APIKeyUpdate) SetHoneypotConfig(v map[string]interface{}) *APIKeyUpdate {
+	_u.mutation.SetHoneypotConfig(v)
+	return _u
+}
+
+// ClearHoneypotConfig clears the value of the "honeypot_config" field.
+func (_u *APIKeyUpdate) ClearHoneypotConfig() *APIKeyUpdate {
+	_u.mutation.ClearHoneypotConfig()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdate) SetUser(v *User) *APIKeyUpdate {
 	return _u.SetUserID(v.ID)
@@ -695,6 +721,15 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.IsHoneypot(); ok {
+		_spec.SetField(apikey.FieldIsHoneypot, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.HoneypotConfig(); ok {
+		_spec.SetField(apikey.FieldHoneypotConfig, field.TypeJSON, value)
+	}
+	if _u.mutation.HoneypotConfigCleared() {
+		_spec.ClearField(apikey.FieldHoneypotConfig, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1225,6 +1260,32 @@ func (_u *APIKeyUpdateOne) ClearWindow7dStart() *APIKeyUpdateOne {
 	return _u
 }
 
+// SetIsHoneypot sets the "is_honeypot" field.
+func (_u *APIKeyUpdateOne) SetIsHoneypot(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetIsHoneypot(v)
+	return _u
+}
+
+// SetNillableIsHoneypot sets the "is_honeypot" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableIsHoneypot(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetIsHoneypot(*v)
+	}
+	return _u
+}
+
+// SetHoneypotConfig sets the "honeypot_config" field.
+func (_u *APIKeyUpdateOne) SetHoneypotConfig(v map[string]interface{}) *APIKeyUpdateOne {
+	_u.mutation.SetHoneypotConfig(v)
+	return _u
+}
+
+// ClearHoneypotConfig clears the value of the "honeypot_config" field.
+func (_u *APIKeyUpdateOne) ClearHoneypotConfig() *APIKeyUpdateOne {
+	_u.mutation.ClearHoneypotConfig()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdateOne) SetUser(v *User) *APIKeyUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -1512,6 +1573,15 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.IsHoneypot(); ok {
+		_spec.SetField(apikey.FieldIsHoneypot, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.HoneypotConfig(); ok {
+		_spec.SetField(apikey.FieldHoneypotConfig, field.TypeJSON, value)
+	}
+	if _u.mutation.HoneypotConfigCleared() {
+		_spec.ClearField(apikey.FieldHoneypotConfig, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

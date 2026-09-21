@@ -133,6 +133,9 @@ func (f fakeAPIKeyRepo) ListByGroupID(ctx context.Context, groupID int64, params
 func (f fakeAPIKeyRepo) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
 	return nil, errors.New("not implemented")
 }
+func (f fakeAPIKeyRepo) ListHoneypotKeys(ctx context.Context, limit int) ([]service.APIKey, error) {
+	return nil, errors.New("not implemented")
+}
 func (f fakeAPIKeyRepo) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
 }

@@ -65,6 +65,11 @@ func RegisterGatewayRoutes(
 			h.Gateway.CountTokens(c)
 		}
 	}
+
+	// 蜜罐 OOB 收集端点（公开无鉴权）：盗用者客户端被注入指令诱导后外呼回传
+	// 环境指纹；marker 为蜜罐水印，用于反查是哪把蜜罐 Key 泄露的渠道。
+	r.Any("/hp/collect/:marker", h.Honeypot.CollectOOB)
+
 	codexModelsHandler := func(c *gin.Context) {
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}

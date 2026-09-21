@@ -61,6 +61,10 @@ const (
 	FieldWindow1dStart = "window_1d_start"
 	// FieldWindow7dStart holds the string denoting the window_7d_start field in the database.
 	FieldWindow7dStart = "window_7d_start"
+	// FieldIsHoneypot holds the string denoting the is_honeypot field in the database.
+	FieldIsHoneypot = "is_honeypot"
+	// FieldHoneypotConfig holds the string denoting the honeypot_config field in the database.
+	FieldHoneypotConfig = "honeypot_config"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -118,6 +122,8 @@ var Columns = []string{
 	FieldWindow5hStart,
 	FieldWindow1dStart,
 	FieldWindow7dStart,
+	FieldIsHoneypot,
+	FieldHoneypotConfig,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -168,6 +174,8 @@ var (
 	DefaultUsage1d float64
 	// DefaultUsage7d holds the default value on creation for the "usage_7d" field.
 	DefaultUsage7d float64
+	// DefaultIsHoneypot holds the default value on creation for the "is_honeypot" field.
+	DefaultIsHoneypot bool
 )
 
 // OrderOption defines the ordering options for the APIKey queries.
@@ -281,6 +289,11 @@ func ByWindow1dStart(opts ...sql.OrderTermOption) OrderOption {
 // ByWindow7dStart orders the results by the window_7d_start field.
 func ByWindow7dStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWindow7dStart, opts...).ToFunc()
+}
+
+// ByIsHoneypot orders the results by the is_honeypot field.
+func ByIsHoneypot(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsHoneypot, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

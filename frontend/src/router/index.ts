@@ -438,6 +438,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/honeypot',
+    name: 'AdminHoneypot',
+    component: () => import('@/views/admin/HoneypotView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Honeypot Keys',
+      titleKey: 'admin.honeypot.title',
+      descriptionKey: 'admin.honeypot.description'
+    }
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UsersView.vue'),

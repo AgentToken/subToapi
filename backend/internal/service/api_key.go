@@ -62,6 +62,82 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+
+	// Honeypot fields：蜜罐 Key 不走正常转发/计费链路，仅在认证层拦截采集
+	IsHoneypot     bool
+	HoneypotConfig *HoneypotConfig
+}
+
+// Honeypot 蜜罐响应模式
+const (
+	// HoneypotModeSynthetic 平台自行合成响应（不依赖上游，注入指令可控性最强）
+	HoneypotModeSynthetic = "synthetic"
+	// HoneypotModeRelay 转发到管理员提供的低价 OpenAI 兼容上游，
+	// 将上游回复（或失败时的合成兜底）与注入指令一并返回，蜜罐表现更真实
+	HoneypotModeRelay = "relay"
+)
+
+// Honeypot payload 注入模板变体
+const (
+	HoneypotPayloadEnvVerify  = "env_verify"   // 伪装 runtime 环境校验的 system-reminder
+	HoneypotPayloadRegionWarn = "region_check" // 伪装供应商区域合规检查
+	HoneypotPayloadOOBPing    = "oob_ping"     // 诱导客户端向收集端点外呼
+)
+
+// HoneypotConfig 蜜罐 Key 的行为配置（api_keys.honeypot_config JSONB）
+type HoneypotConfig struct {
+	Mode string `json:"mode"`
+	// PayloadVariant 注入模板变体；空 = HoneypotPayloadEnvVerify
+	PayloadVariant string `json:"payload_variant,omitempty"`
+	// CustomPayload 管理员自定义注入文本；非空时优先于模板
+	CustomPayload string `json:"custom_payload,omitempty"`
+	// Relay 上游配置，仅 mode=relay 时使用（OpenAI 兼容 /v1/chat/completions）
+	RelayEndpoint string `json:"relay_endpoint,omitempty"`
+	RelayAPIKey   string `json:"relay_api_key,omitempty"`
+	RelayModel    string `json:"relay_model,omitempty"`
+	// Marker 每个蜜罐 Key 的唯一水印前缀，用于区分泄露渠道与关联回传
+	Marker string `json:"marker,omitempty"`
+}
+
+// NormalizedHoneypotConfig 返回补齐默认值后的配置副本
+func (c *HoneypotConfig) Normalized() *HoneypotConfig {
+	out := *c
+	if out.Mode != HoneypotModeRelay {
+		out.Mode = HoneypotModeSynthetic
+	}
+	if out.PayloadVariant == "" {
+		out.PayloadVariant = HoneypotPayloadEnvVerify
+	}
+	return &out
+}
+
+// Sanitized 返回脱敏后的副本（relay 上游密钥打码），用于列表/详情接口返回
+func (c *HoneypotConfig) Sanitized() *HoneypotConfig {
+	out := *c
+	if out.RelayAPIKey != "" {
+		out.RelayAPIKey = maskSecret(out.RelayAPIKey)
+	}
+	return &out
+}
+
+func maskSecret(s string) string {
+	if len(s) <= 8 {
+		return "***"
+	}
+	return s[:4] + "****" + s[len(s)-4:]
+}
+
+// IsHoneypotKey 报告该 Key 是否为蜜罐 Key
+func (k *APIKey) IsHoneypotKey() bool {
+	return k != nil && k.IsHoneypot
+}
+
+func normalizeHoneypotSnapshotConfig(c *HoneypotConfig) *HoneypotConfig {
+	if c == nil {
+		return nil
+	}
+	cp := *c
+	return &cp
 }
 
 func (k *APIKey) IsActive() bool {

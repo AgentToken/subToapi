@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/honeypotevent"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
@@ -145,6 +146,10 @@ func init() {
 	apikeyDescUsage7d := apikeyFields[16].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
+	// apikeyDescIsHoneypot is the schema descriptor for is_honeypot field.
+	apikeyDescIsHoneypot := apikeyFields[20].Descriptor()
+	// apikey.DefaultIsHoneypot holds the default value on creation for the is_honeypot field.
+	apikey.DefaultIsHoneypot = apikeyDescIsHoneypot.Default.(bool)
 	accountMixin := schema.Account{}.Mixin()
 	accountMixinHooks1 := accountMixin[1].Hooks()
 	account.Hooks[0] = accountMixinHooks1[0]
@@ -1223,6 +1228,61 @@ func init() {
 	groupDescProfitSafetyBuffer := groupFields[62].Descriptor()
 	// group.DefaultProfitSafetyBuffer holds the default value on creation for the profit_safety_buffer field.
 	group.DefaultProfitSafetyBuffer = groupDescProfitSafetyBuffer.Default.(float64)
+	honeypoteventMixin := schema.HoneypotEvent{}.Mixin()
+	honeypoteventMixinFields0 := honeypoteventMixin[0].Fields()
+	_ = honeypoteventMixinFields0
+	honeypoteventFields := schema.HoneypotEvent{}.Fields()
+	_ = honeypoteventFields
+	// honeypoteventDescCreatedAt is the schema descriptor for created_at field.
+	honeypoteventDescCreatedAt := honeypoteventMixinFields0[0].Descriptor()
+	// honeypotevent.DefaultCreatedAt holds the default value on creation for the created_at field.
+	honeypotevent.DefaultCreatedAt = honeypoteventDescCreatedAt.Default.(func() time.Time)
+	// honeypoteventDescUpdatedAt is the schema descriptor for updated_at field.
+	honeypoteventDescUpdatedAt := honeypoteventMixinFields0[1].Descriptor()
+	// honeypotevent.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	honeypotevent.DefaultUpdatedAt = honeypoteventDescUpdatedAt.Default.(func() time.Time)
+	// honeypotevent.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	honeypotevent.UpdateDefaultUpdatedAt = honeypoteventDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// honeypoteventDescSource is the schema descriptor for source field.
+	honeypoteventDescSource := honeypoteventFields[1].Descriptor()
+	// honeypotevent.DefaultSource holds the default value on creation for the source field.
+	honeypotevent.DefaultSource = honeypoteventDescSource.Default.(string)
+	// honeypotevent.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	honeypotevent.SourceValidator = honeypoteventDescSource.Validators[0].(func(string) error)
+	// honeypoteventDescMethod is the schema descriptor for method field.
+	honeypoteventDescMethod := honeypoteventFields[2].Descriptor()
+	// honeypotevent.DefaultMethod holds the default value on creation for the method field.
+	honeypotevent.DefaultMethod = honeypoteventDescMethod.Default.(string)
+	// honeypotevent.MethodValidator is a validator for the "method" field. It is called by the builders before save.
+	honeypotevent.MethodValidator = honeypoteventDescMethod.Validators[0].(func(string) error)
+	// honeypoteventDescPath is the schema descriptor for path field.
+	honeypoteventDescPath := honeypoteventFields[3].Descriptor()
+	// honeypotevent.DefaultPath holds the default value on creation for the path field.
+	honeypotevent.DefaultPath = honeypoteventDescPath.Default.(string)
+	// honeypoteventDescClientIP is the schema descriptor for client_ip field.
+	honeypoteventDescClientIP := honeypoteventFields[4].Descriptor()
+	// honeypotevent.DefaultClientIP holds the default value on creation for the client_ip field.
+	honeypotevent.DefaultClientIP = honeypoteventDescClientIP.Default.(string)
+	// honeypotevent.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
+	honeypotevent.ClientIPValidator = honeypoteventDescClientIP.Validators[0].(func(string) error)
+	// honeypoteventDescModel is the schema descriptor for model field.
+	honeypoteventDescModel := honeypoteventFields[6].Descriptor()
+	// honeypotevent.DefaultModel holds the default value on creation for the model field.
+	honeypotevent.DefaultModel = honeypoteventDescModel.Default.(string)
+	// honeypoteventDescIsStream is the schema descriptor for is_stream field.
+	honeypoteventDescIsStream := honeypoteventFields[7].Descriptor()
+	// honeypotevent.DefaultIsStream holds the default value on creation for the is_stream field.
+	honeypotevent.DefaultIsStream = honeypoteventDescIsStream.Default.(bool)
+	// honeypoteventDescBodyTruncated is the schema descriptor for body_truncated field.
+	honeypoteventDescBodyTruncated := honeypoteventFields[10].Descriptor()
+	// honeypotevent.DefaultBodyTruncated holds the default value on creation for the body_truncated field.
+	honeypotevent.DefaultBodyTruncated = honeypoteventDescBodyTruncated.Default.(bool)
+	// honeypoteventDescResponseMode is the schema descriptor for response_mode field.
+	honeypoteventDescResponseMode := honeypoteventFields[13].Descriptor()
+	// honeypotevent.DefaultResponseMode holds the default value on creation for the response_mode field.
+	honeypotevent.DefaultResponseMode = honeypoteventDescResponseMode.Default.(string)
+	// honeypotevent.ResponseModeValidator is a validator for the "response_mode" field. It is called by the builders before save.
+	honeypotevent.ResponseModeValidator = honeypoteventDescResponseMode.Validators[0].(func(string) error)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

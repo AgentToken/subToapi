@@ -160,6 +160,11 @@ func Window7dStart(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldWindow7dStart, v))
 }
 
+// IsHoneypot applies equality check predicate on the "is_honeypot" field. It's identical to IsHoneypotEQ.
+func IsHoneypot(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldIsHoneypot, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldCreatedAt, v))
@@ -1123,6 +1128,26 @@ func Window7dStartIsNil() predicate.APIKey {
 // Window7dStartNotNil applies the NotNil predicate on the "window_7d_start" field.
 func Window7dStartNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldWindow7dStart))
+}
+
+// IsHoneypotEQ applies the EQ predicate on the "is_honeypot" field.
+func IsHoneypotEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldIsHoneypot, v))
+}
+
+// IsHoneypotNEQ applies the NEQ predicate on the "is_honeypot" field.
+func IsHoneypotNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldIsHoneypot, v))
+}
+
+// HoneypotConfigIsNil applies the IsNil predicate on the "honeypot_config" field.
+func HoneypotConfigIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldHoneypotConfig))
+}
+
+// HoneypotConfigNotNil applies the NotNil predicate on the "honeypot_config" field.
+func HoneypotConfigNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldHoneypotConfig))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

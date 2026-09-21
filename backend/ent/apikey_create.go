@@ -307,6 +307,26 @@ func (_c *APIKeyCreate) SetNillableWindow7dStart(v *time.Time) *APIKeyCreate {
 	return _c
 }
 
+// SetIsHoneypot sets the "is_honeypot" field.
+func (_c *APIKeyCreate) SetIsHoneypot(v bool) *APIKeyCreate {
+	_c.mutation.SetIsHoneypot(v)
+	return _c
+}
+
+// SetNillableIsHoneypot sets the "is_honeypot" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableIsHoneypot(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetIsHoneypot(*v)
+	}
+	return _c
+}
+
+// SetHoneypotConfig sets the "honeypot_config" field.
+func (_c *APIKeyCreate) SetHoneypotConfig(v map[string]interface{}) *APIKeyCreate {
+	_c.mutation.SetHoneypotConfig(v)
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *APIKeyCreate) SetUser(v *User) *APIKeyCreate {
 	return _c.SetUserID(v.ID)
@@ -419,6 +439,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultUsage7d
 		_c.mutation.SetUsage7d(v)
 	}
+	if _, ok := _c.mutation.IsHoneypot(); !ok {
+		v := apikey.DefaultIsHoneypot
+		_c.mutation.SetIsHoneypot(v)
+	}
 	return nil
 }
 
@@ -480,6 +504,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.Usage7d(); !ok {
 		return &ValidationError{Name: "usage_7d", err: errors.New(`ent: missing required field "APIKey.usage_7d"`)}
+	}
+	if _, ok := _c.mutation.IsHoneypot(); !ok {
+		return &ValidationError{Name: "is_honeypot", err: errors.New(`ent: missing required field "APIKey.is_honeypot"`)}
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "APIKey.user"`)}
@@ -594,6 +621,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Window7dStart(); ok {
 		_spec.SetField(apikey.FieldWindow7dStart, field.TypeTime, value)
 		_node.Window7dStart = &value
+	}
+	if value, ok := _c.mutation.IsHoneypot(); ok {
+		_spec.SetField(apikey.FieldIsHoneypot, field.TypeBool, value)
+		_node.IsHoneypot = value
+	}
+	if value, ok := _c.mutation.HoneypotConfig(); ok {
+		_spec.SetField(apikey.FieldHoneypotConfig, field.TypeJSON, value)
+		_node.HoneypotConfig = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1060,6 +1095,36 @@ func (u *APIKeyUpsert) UpdateWindow7dStart() *APIKeyUpsert {
 // ClearWindow7dStart clears the value of the "window_7d_start" field.
 func (u *APIKeyUpsert) ClearWindow7dStart() *APIKeyUpsert {
 	u.SetNull(apikey.FieldWindow7dStart)
+	return u
+}
+
+// SetIsHoneypot sets the "is_honeypot" field.
+func (u *APIKeyUpsert) SetIsHoneypot(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldIsHoneypot, v)
+	return u
+}
+
+// UpdateIsHoneypot sets the "is_honeypot" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateIsHoneypot() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldIsHoneypot)
+	return u
+}
+
+// SetHoneypotConfig sets the "honeypot_config" field.
+func (u *APIKeyUpsert) SetHoneypotConfig(v map[string]interface{}) *APIKeyUpsert {
+	u.Set(apikey.FieldHoneypotConfig, v)
+	return u
+}
+
+// UpdateHoneypotConfig sets the "honeypot_config" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateHoneypotConfig() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldHoneypotConfig)
+	return u
+}
+
+// ClearHoneypotConfig clears the value of the "honeypot_config" field.
+func (u *APIKeyUpsert) ClearHoneypotConfig() *APIKeyUpsert {
+	u.SetNull(apikey.FieldHoneypotConfig)
 	return u
 }
 
@@ -1532,6 +1597,41 @@ func (u *APIKeyUpsertOne) UpdateWindow7dStart() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearWindow7dStart() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetIsHoneypot sets the "is_honeypot" field.
+func (u *APIKeyUpsertOne) SetIsHoneypot(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIsHoneypot(v)
+	})
+}
+
+// UpdateIsHoneypot sets the "is_honeypot" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateIsHoneypot() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIsHoneypot()
+	})
+}
+
+// SetHoneypotConfig sets the "honeypot_config" field.
+func (u *APIKeyUpsertOne) SetHoneypotConfig(v map[string]interface{}) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetHoneypotConfig(v)
+	})
+}
+
+// UpdateHoneypotConfig sets the "honeypot_config" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateHoneypotConfig() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateHoneypotConfig()
+	})
+}
+
+// ClearHoneypotConfig clears the value of the "honeypot_config" field.
+func (u *APIKeyUpsertOne) ClearHoneypotConfig() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearHoneypotConfig()
 	})
 }
 
@@ -2170,6 +2270,41 @@ func (u *APIKeyUpsertBulk) UpdateWindow7dStart() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearWindow7dStart() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetIsHoneypot sets the "is_honeypot" field.
+func (u *APIKeyUpsertBulk) SetIsHoneypot(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIsHoneypot(v)
+	})
+}
+
+// UpdateIsHoneypot sets the "is_honeypot" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateIsHoneypot() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIsHoneypot()
+	})
+}
+
+// SetHoneypotConfig sets the "honeypot_config" field.
+func (u *APIKeyUpsertBulk) SetHoneypotConfig(v map[string]interface{}) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetHoneypotConfig(v)
+	})
+}
+
+// UpdateHoneypotConfig sets the "honeypot_config" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateHoneypotConfig() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateHoneypotConfig()
+	})
+}
+
+// ClearHoneypotConfig clears the value of the "honeypot_config" field.
+func (u *APIKeyUpsertBulk) ClearHoneypotConfig() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearHoneypotConfig()
 	})
 }
 

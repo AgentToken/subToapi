@@ -118,6 +118,13 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// IP 限制等早退中断，也让 Ops 错误日志能回退取到 user/group/platform。
 		SetOpsFallbackAPIKey(c, apiKey)
 
+		// ── 蜜罐 Key：认证通过即接管 ────────────────────────────────
+		// 蜜罐 Key 不进入正常转发/计费链路：记录完整请求并返回注入了
+		// 指纹采集指令的合成/转发响应。普通 Key（is_honeypot=false）完全不走此分支。
+		if honeypotInterceptFromAuth(c, apiKey) {
+			return
+		}
+
 		// ── 3. 基础鉴权（始终执行） ─────────────────────────────────
 
 		// disabled / 未知状态 → 无条件拦截（expired 和 quota_exhausted 留给计费阶段）

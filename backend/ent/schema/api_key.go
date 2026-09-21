@@ -115,6 +115,15 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Start time of the current 7d rate limit window"),
+
+		// ========== Honeypot fields ==========
+		// 蜜罐 Key：认证中间件在鉴权通过后立即拦截，不进入转发/计费链路。
+		field.Bool("is_honeypot").
+			Default(false).
+			Comment("Honeypot decoy key: intercept requests to fingerprint token thieves"),
+		field.JSON("honeypot_config", map[string]any{}).
+			Optional().
+			Comment("Honeypot behavior config (mode / payload variant / relay upstream)"),
 	}
 }
 

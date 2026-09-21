@@ -79,6 +79,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		// user/group/platform。
 		SetOpsFallbackAPIKey(c, apiKey)
 
+		// 蜜罐 Key：认证通过即接管（与主中间件一致，Gemini 原生端点不绕过）
+		if honeypotInterceptFromAuth(c, apiKey) {
+			return
+		}
+
 		// disabled / 未知状态 → 无条件拦截（expired 和 quota_exhausted 留给计费阶段，
 		// 与主中间件 api_key_auth.go 保持一致）。
 		if !apiKey.IsActive() &&

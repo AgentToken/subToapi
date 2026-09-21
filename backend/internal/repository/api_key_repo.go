@@ -63,6 +63,12 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 	if len(key.IPBlacklist) > 0 {
 		builder.SetIPBlacklist(key.IPBlacklist)
 	}
+	if key.IsHoneypot {
+		builder.SetIsHoneypot(true)
+		if cfgMap := honeypotConfigToMap(key.HoneypotConfig); cfgMap != nil {
+			builder.SetHoneypotConfig(cfgMap)
+		}
+	}
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -144,6 +150,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldRateLimit5h,
 			apikey.FieldRateLimit1d,
 			apikey.FieldRateLimit7d,
+			apikey.FieldIsHoneypot,
+			apikey.FieldHoneypotConfig,
 		).
 		WithUser(func(q *dbent.UserQuery) {
 			q.Select(
@@ -327,6 +335,16 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 			builder.SetIPBlacklist(key.IPBlacklist)
 		} else {
 			builder.ClearIPBlacklist()
+		}
+	}
+
+	// 蜜罐标记与配置
+	if fields.Honeypot {
+		builder.SetIsHoneypot(key.IsHoneypot)
+		if cfgMap := honeypotConfigToMap(key.HoneypotConfig); cfgMap != nil {
+			builder.SetHoneypotConfig(cfgMap)
+		} else {
+			builder.ClearHoneypotConfig()
 		}
 	}
 
@@ -685,6 +703,27 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 }
 
 // SearchAPIKeys searches API keys by user ID and/or keyword (name)
+// ListHoneypotKeys 返回全部蜜罐 Key（按创建时间倒序）。
+func (r *apiKeyRepository) ListHoneypotKeys(ctx context.Context, limit int) ([]service.APIKey, error) {
+	q := r.activeQuery().
+		Where(apikey.IsHoneypotEQ(true)).
+		Order(dbent.Desc(apikey.FieldCreatedAt))
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	rows, err := q.WithUser(func(uq *dbent.UserQuery) {
+		uq.Select(user.FieldID, user.FieldEmail, user.FieldUsername)
+	}).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.APIKey, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, *apiKeyEntityToService(m))
+	}
+	return out, nil
+}
+
 func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
 	q := r.activeQuery()
 	if userID > 0 {
@@ -868,6 +907,21 @@ func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (resu
 	return data, rows.Err()
 }
 
+func honeypotConfigToMap(cfg *service.HoneypotConfig) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	if m == nil {
 		return nil
@@ -896,6 +950,15 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Window5hStart: m.Window5hStart,
 		Window1dStart: m.Window1dStart,
 		Window7dStart: m.Window7dStart,
+		IsHoneypot:    m.IsHoneypot,
+	}
+	if len(m.HoneypotConfig) > 0 {
+		if raw, err := json.Marshal(m.HoneypotConfig); err == nil {
+			hpCfg := &service.HoneypotConfig{}
+			if json.Unmarshal(raw, hpCfg) == nil {
+				out.HoneypotConfig = hpCfg
+			}
+		}
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
