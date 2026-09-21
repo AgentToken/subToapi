@@ -20,6 +20,10 @@ type updateFieldsAPIKeyRepoStub struct {
 }
 
 // IncrementQuotaUsed 模拟计费热路径上的原子递增：只动 quota_used。
+func (s *updateFieldsAPIKeyRepoStub) ListHoneypotKeys(context.Context, int) ([]APIKey, error) {
+	panic("unexpected")
+}
+
 func (s *updateFieldsAPIKeyRepoStub) IncrementQuotaUsed(_ context.Context, _ int64, amount float64) (float64, error) {
 	s.key.QuotaUsed += amount
 	return s.key.QuotaUsed, nil

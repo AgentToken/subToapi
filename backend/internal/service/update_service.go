@@ -661,9 +661,27 @@ func parseVersion(v string) [3]int {
 	parts := strings.Split(v, ".")
 	result := [3]int{0, 0, 0}
 	for i := 0; i < len(parts) && i < 3; i++ {
-		if parsed, err := strconv.Atoi(parts[i]); err == nil {
-			result[i] = parsed
-		}
+		result[i] = parseVersionSegment(parts[i])
 	}
 	return result
+}
+
+// parseVersionSegment 解析单个版本段的前导数字。
+// 本仓库版本号带字母后缀（如 0.2.1beta、0.2.2gamma）且不带连字符，
+// 只取前导数字参与比较（2gamma == 2，1beta == 1）；
+// 否则 Atoi 失败会把补丁位丢成 0，导致 0.2.1beta 与 0.2.2gamma
+// 被判为同版本、更新检查永远提示"已是最新"。
+func parseVersionSegment(s string) int {
+	end := 0
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+	parsed, err := strconv.Atoi(s[:end])
+	if err != nil {
+		return 0
+	}
+	return parsed
 }

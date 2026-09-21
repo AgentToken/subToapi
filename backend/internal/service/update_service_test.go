@@ -185,3 +185,31 @@ func TestUpdateServiceRollbackToVersionAcceptsVPrefix(t *testing.T) {
 	require.NotErrorIs(t, err, ErrRollbackVersionNotAllowed)
 	require.Contains(t, err.Error(), "no compatible release found")
 }
+
+func TestParseVersionHandlesAlphaSuffixes(t *testing.T) {
+	// 本仓库使用 0.2.1beta / 0.2.2gamma 这类无连字符的字母后缀版本号，
+	// 补丁段必须取前导数字，否则两个后缀版本都会塌缩成 0.2.0，
+	// 更新检查永远提示"已是最新"。
+	cases := []struct {
+		version string
+		want    [3]int
+	}{
+		{"0.2.1beta", [3]int{0, 2, 1}},
+		{"0.2.2gamma", [3]int{0, 2, 2}},
+		{"v0.2.2gamma", [3]int{0, 2, 2}},
+		{"0.2.2", [3]int{0, 2, 2}},
+		{"1.2.3-rc1", [3]int{1, 2, 3}},
+		{"0.2", [3]int{0, 2, 0}},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, parseVersion(tc.version), "version %q", tc.version)
+	}
+}
+
+func TestCompareVersionsDetectsGammaUpdateOverBeta(t *testing.T) {
+	// 线上场景：运行 0.2.1beta 时，latest=0.2.2gamma 必须被判定为有更新
+	require.Equal(t, -1, compareVersions("0.2.1beta", "0.2.2gamma"))
+	require.Equal(t, -1, compareVersions("0.2.2gamma", "0.2.3gamma"))
+	require.Equal(t, 0, compareVersions("0.2.2gamma", "0.2.2"))
+	require.Equal(t, 1, compareVersions("0.2.3gamma", "0.2.2gamma"))
+}

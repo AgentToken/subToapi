@@ -18,6 +18,10 @@ type quotaStateRepoStub struct {
 	stateErr   error
 }
 
+func (s *quotaStateRepoStub) ListHoneypotKeys(context.Context, int) ([]APIKey, error) {
+	panic("unexpected")
+}
+
 func (s *quotaStateRepoStub) IncrementQuotaUsedAndGetState(ctx context.Context, id int64, amount float64) (*APIKeyQuotaUsageState, error) {
 	s.stateCalls++
 	if s.stateErr != nil {

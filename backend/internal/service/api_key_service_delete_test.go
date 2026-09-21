@@ -188,6 +188,10 @@ func (s *apiKeyRepoStub) SearchAPIKeys(ctx context.Context, userID int64, keywor
 	panic("unexpected SearchAPIKeys call")
 }
 
+func (s *apiKeyRepoStub) ListHoneypotKeys(ctx context.Context, limit int) ([]APIKey, error) {
+	panic("unexpected ListHoneypotKeys call")
+}
+
 func (s *apiKeyRepoStub) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	panic("unexpected ClearGroupIDByGroupID call")
 }
