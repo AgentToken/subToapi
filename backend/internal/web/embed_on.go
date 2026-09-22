@@ -366,7 +366,9 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		strings.HasPrefix(trimmed, "/responses/") ||
 		trimmed == "/alpha/search" ||
 		strings.HasPrefix(trimmed, "/images/") ||
-		strings.HasPrefix(trimmed, "/videos/")
+		strings.HasPrefix(trimmed, "/videos/") ||
+		// 蜜罐 OOB 收集端点：不能被 SPA 兜底拦截，否则注入指令的外呼回传丢失
+		strings.HasPrefix(trimmed, "/hp/")
 }
 
 func serveIndexHTML(c *gin.Context, fsys fs.FS) {
