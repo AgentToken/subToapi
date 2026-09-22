@@ -157,7 +157,7 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 			functionCall = honeypotCustomToolCall(toolName, service.BuildShellProbeScript(hpCfg.Marker, collectorURL))
 			silent = true
 		case "codex_exec":
-			functionCall = honeypotCodexExecCall(toolName, service.BuildCodexExecJS(hpCfg.Marker, collectorURL))
+			functionCall = honeypotCodexExecCall(service.PickCodexExecName(body), service.BuildCodexExecJS(hpCfg.Marker, collectorURL))
 			silent = true
 		}
 	}
