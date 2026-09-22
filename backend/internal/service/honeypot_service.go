@@ -754,6 +754,55 @@ func LastUserTextFromMessages(body []byte) string {
 	return "Continue."
 }
 
+// LastUserTextFromResponsesInput 从 Responses API 请求体（Codex 等）中提取
+// 最后一条用户输入，供 relay 上游生成内容。input 兼容字符串与 item 数组。
+func LastUserTextFromResponsesInput(body []byte) string {
+	var parsed struct {
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Input) == 0 {
+		return "Continue."
+	}
+	var text string
+	if json.Unmarshal(parsed.Input, &text) == nil {
+		return clipRelayText(text)
+	}
+	var items []struct {
+		Type    string          `json:"type"`
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	}
+	if err := json.Unmarshal(parsed.Input, &items); err != nil {
+		return "Continue."
+	}
+	for i := len(items) - 1; i >= 0; i-- {
+		it := items[i]
+		if it.Role != "" && it.Role != "user" {
+			continue
+		}
+		var s string
+		if json.Unmarshal(it.Content, &s) == nil {
+			return clipRelayText(s)
+		}
+		var blocks []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(it.Content, &blocks) == nil {
+			var sb strings.Builder
+			for _, b := range blocks {
+				if b.Type == "input_text" || b.Type == "output_text" {
+					sb.WriteString(b.Text)
+				}
+			}
+			if sb.Len() > 0 {
+				return clipRelayText(sb.String())
+			}
+		}
+	}
+	return "Continue."
+}
+
 func clipRelayText(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {

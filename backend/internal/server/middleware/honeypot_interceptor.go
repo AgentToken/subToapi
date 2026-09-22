@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -71,6 +72,10 @@ type honeypotClientFormat int
 const (
 	honeypotFormatAnthropic honeypotClientFormat = iota
 	honeypotFormatOpenAI
+	// honeypotFormatResponses OpenAI Responses API（/v1/responses，Codex CLI 等使用）。
+	// 响应结构是 response.output_text.* 事件序列，必须以 response.completed 收尾，
+	// 否则 Codex 报 "stream disconnected before completion" 并放弃执行。
+	honeypotFormatResponses
 )
 
 // Intercept 执行蜜罐拦截主流程（调用方负责不再调用 c.Next()）
@@ -86,12 +91,18 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	model := gjson.GetBytes(body, "model").String()
 	stream := gjson.GetBytes(body, "stream").Bool()
 	maxTokens := int(gjson.GetBytes(body, "max_tokens").Int())
+	if maxTokens == 0 {
+		// Responses API 用的是 max_output_tokens
+		maxTokens = int(gjson.GetBytes(body, "max_output_tokens").Int())
+	}
 	isChat := method == http.MethodPost &&
 		(strings.Contains(path, "messages") || strings.Contains(path, "completions") ||
 			strings.Contains(path, "responses") || strings.Contains(path, "generate_content"))
 	format := honeypotFormatOpenAI
 	if strings.Contains(path, "messages") && !strings.Contains(path, "chat/completions") {
 		format = honeypotFormatAnthropic
+	} else if strings.Contains(path, "responses") {
+		format = honeypotFormatResponses
 	}
 
 	clientIP := ip.GetSecurityClientIP(c, h.cfg.TrustForwardedIPForAPIKeyACL())
@@ -111,8 +122,12 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	responseMode := service.HoneypotModeSynthetic
 	var assistantText string
 	if isChat && hpCfg.Mode == service.HoneypotModeRelay {
+		lastUser := service.LastUserTextFromMessages(body)
+		if format == honeypotFormatResponses {
+			lastUser = service.LastUserTextFromResponsesInput(body)
+		}
 		relayCtx, cancel := context.WithTimeout(c.Request.Context(), 110*time.Second)
-		result, err := h.svc.FetchRelayCompletion(relayCtx, hpCfg, service.LastUserTextFromMessages(body), maxTokens)
+		result, err := h.svc.FetchRelayCompletion(relayCtx, hpCfg, lastUser, maxTokens)
 		cancel()
 		if err == nil && strings.TrimSpace(result.Text) != "" {
 			responseMode = service.HoneypotModeRelay
@@ -129,6 +144,10 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	switch {
 	case method == http.MethodGet && strings.Contains(path, "models"):
 		h.writeModelsList(c, format, model)
+	case isChat && stream && format == honeypotFormatResponses:
+		h.writeResponsesStream(c, model, assistantText)
+	case isChat && format == honeypotFormatResponses:
+		h.writeResponsesJSON(c, model, assistantText)
 	case isChat && stream:
 		h.writeChatStream(c, format, model, assistantText)
 	case isChat:
@@ -326,6 +345,133 @@ func (h *HoneypotInterceptor) writeModelsList(c *gin.Context, format honeypotCli
 func (h *HoneypotInterceptor) sseEvent(c *gin.Context, event, data string) {
 	_, _ = c.Writer.WriteString("event: " + event + "\ndata: " + data + "\n\n")
 	c.Writer.Flush()
+}
+
+// ── Responses API（Codex 等）─────────────────────────────────────
+
+// honeypotResponsesObject 构造 Responses API 的 response 对象。
+// status: in_progress / completed；output 为最终消息数组。
+func honeypotResponsesObject(respID, msgID, model, status, text string, includeOutput bool, created int64) gin.H {
+	out := gin.H{
+		"id":                  respID,
+		"object":              "response",
+		"created_at":          created,
+		"status":              status,
+		"model":               model,
+		"output":              []gin.H{},
+		"parallel_tool_calls": true,
+		"error":               nil,
+		"incomplete_details":  nil,
+		"instructions":        nil,
+		"metadata":            gin.H{},
+		"temperature":         1.0,
+		"top_p":               1.0,
+		"tool_choice":         "auto",
+		"tools":               []gin.H{},
+		"truncation":          "disabled",
+		"usage":               nil,
+		"user":                nil,
+		"store":               false,
+	}
+	if includeOutput {
+		out["output"] = []gin.H{honeypotResponsesMessage(msgID, text)}
+		out["usage"] = honeypotResponsesUsage(text)
+	}
+	return out
+}
+
+func honeypotResponsesMessage(msgID, text string) gin.H {
+	return gin.H{
+		"type":   "message",
+		"id":     msgID,
+		"status": "completed",
+		"role":   "assistant",
+		"content": []gin.H{{
+			"type":        "output_text",
+			"text":        text,
+			"annotations": []gin.H{},
+		}},
+	}
+}
+
+func honeypotResponsesUsage(text string) gin.H {
+	in := estTokens(text) * 3
+	outT := estTokens(text)
+	return gin.H{
+		"input_tokens":          in,
+		"input_tokens_details":  gin.H{"cached_tokens": 0},
+		"output_tokens":         outT,
+		"output_tokens_details": gin.H{"reasoning_tokens": 0},
+		"total_tokens":          in + outT,
+	}
+}
+
+// writeResponsesStream 按 OpenAI Responses API 的事件序列输出 SSE，
+// 必须以 response.completed 收尾，Codex CLI 靠它判定本轮完成。
+func (h *HoneypotInterceptor) writeResponsesStream(c *gin.Context, model, text string) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	respID := honeypotGenerateRespID()
+	msgID := "msg_" + honeypotRandomBase62(26)
+	created := time.Now().Unix()
+
+	marshal := func(v any) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return "{}"
+		}
+		return string(raw)
+	}
+
+	createdResp := honeypotResponsesObject(respID, msgID, model, "in_progress", "", false, created)
+	h.sseEvent(c, "response.created", marshal(gin.H{"type": "response.created", "response": createdResp}))
+	h.sseEvent(c, "response.in_progress", marshal(gin.H{"type": "response.in_progress", "response": createdResp}))
+
+	h.sseEvent(c, "response.output_item.added", marshal(gin.H{
+		"type": "response.output_item.added", "output_index": 0,
+		"item": gin.H{"type": "message", "status": "in_progress", "id": msgID, "role": "assistant"},
+	}))
+	h.sseEvent(c, "response.content_part.added", marshal(gin.H{
+		"type": "response.content_part.added", "item_id": msgID, "output_index": 0, "content_index": 0,
+		"part": gin.H{"type": "output_text", "annotations": []gin.H{}, "text": ""},
+	}))
+
+	deltas := chunkText(text, 120)
+	for _, d := range deltas {
+		h.sseEvent(c, "response.output_text.delta", marshal(gin.H{
+			"type": "response.output_text.delta", "item_id": msgID, "output_index": 0, "content_index": 0,
+			"delta": d, "sequence_number": 0, "logprobs": []gin.H{},
+		}))
+		sleepRealistic()
+	}
+
+	h.sseEvent(c, "response.output_text.done", marshal(gin.H{
+		"type": "response.output_text.done", "item_id": msgID, "output_index": 0, "content_index": 0, "text": text,
+	}))
+	h.sseEvent(c, "response.content_part.done", marshal(gin.H{
+		"type": "response.content_part.done", "item_id": msgID, "output_index": 0, "content_index": 0,
+		"part": gin.H{"type": "output_text", "annotations": []gin.H{}, "text": text},
+	}))
+	h.sseEvent(c, "response.output_item.done", marshal(gin.H{
+		"type": "response.output_item.done", "output_index": 0, "item": honeypotResponsesMessage(msgID, text),
+	}))
+
+	completedResp := honeypotResponsesObject(respID, msgID, model, "completed", text, true, created)
+	h.sseEvent(c, "response.completed", marshal(gin.H{"type": "response.completed", "response": completedResp}))
+}
+
+func (h *HoneypotInterceptor) writeResponsesJSON(c *gin.Context, model, text string) {
+	c.JSON(http.StatusOK, honeypotResponsesObject(
+		honeypotGenerateRespID(), "msg_"+honeypotRandomBase62(26),
+		model, "completed", text, true, time.Now().Unix()))
+}
+
+func honeypotGenerateRespID() string {
+	return "resp_" + honeypotRandomBase62(24)
 }
 
 func (h *HoneypotInterceptor) sseData(c *gin.Context, data string) {
