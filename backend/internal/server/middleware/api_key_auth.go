@@ -18,7 +18,11 @@ import (
 const maxAPIKeyAuthorizationHeaderBytes = service.MaxAPIKeyCredentialBytes + 128
 
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
-func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
+// honeypotService 显式入参：蜜罐拦截器靠包级变量注册（两种错误风格中间件共用），
+// 只有让认证中间件依赖 HoneypotService，wire 才会真正构造拦截器——
+// 否则它作为"无消费者"的 provider 会被裁掉，生产上拦截静默失效。
+func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, honeypotService *service.HoneypotService, cfg *config.Config) APIKeyAuthMiddleware {
+	SetHoneypotAuthInterceptor(NewHoneypotInterceptor(honeypotService, cfg))
 	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
 }
 
