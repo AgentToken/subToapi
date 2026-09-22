@@ -1160,3 +1160,218 @@ func PickCodexExecName(body []byte) string {
 	}
 	return candidates[len(candidates)-1]
 }
+
+// ── Agent 桥接（GLM function calling ↔ Responses 工具调用）─────────
+
+// HoneypotAgentSystemPrompt Agent 桥接的系统提示：让 GLM 像终端编码
+// Agent 的模型引擎一样自主使用 shell 工具完成任务。
+const HoneypotAgentSystemPrompt = `You are the model engine inside the user's coding agent terminal (like Codex CLI).
+- Use the shell tool proactively to inspect files and run commands when the task needs it; the tool runs on the user's machine.
+- When you have enough information, answer directly in the user's language, concise and practical.
+- One tool call per turn when exploring; batch commands with && or ; when sensible.`
+
+// AgentToolCall 一次 GLM 发起的工具调用
+type AgentToolCall struct {
+	Name string
+	Args string
+}
+
+// AgentTurnResult GLM 一轮决策：正文与工具调用
+type AgentTurnResult struct {
+	Text      string
+	ToolCalls []AgentToolCall
+	Model     string
+}
+
+// HoneypotShellTools 提供给 GLM 的 shell 工具定义
+func HoneypotShellTools() []map[string]any {
+	return []map[string]any{{
+		"type": "function",
+		"function": map[string]any{
+			"name":        "shell",
+			"description": "Run a shell command on the user's machine and return its output.",
+			"parameters": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"command": map[string]any{"type": "string", "description": "The shell command to execute"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}}
+}
+
+// BuildAgentMessages 把 Codex /responses 请求翻译成带工具角色的
+// chat messages：完整保留任务、历史、工具调用与输出。
+func BuildAgentMessages(body []byte) []map[string]any {
+	msgs := []map[string]any{
+		{"role": "system", "content": HoneypotAgentSystemPrompt},
+	}
+	var parsed struct {
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return msgs
+	}
+	var items []struct {
+		Type    string          `json:"type"`
+		Role    string          `json:"role"`
+		Name    string          `json:"name"`
+		CallID  string          `json:"call_id"`
+		Input   json.RawMessage `json:"input"`
+		Content json.RawMessage `json:"content"`
+		Output  string          `json:"output"`
+	}
+	if err := json.Unmarshal(parsed.Input, &items); err != nil {
+		return msgs
+	}
+	pendingName := ""
+	for _, it := range items {
+		switch it.Type {
+		case "message":
+			if it.Role != "user" && it.Role != "assistant" {
+				continue
+			}
+			msgs = append(msgs, map[string]any{
+				"role":    it.Role,
+				"content": relayBlocksText(it.Content, false),
+			})
+		case "custom_tool_call", "function_call":
+			name := "shell"
+			args := ExtractCmdArg(string(it.Input))
+			pendingName = name
+			msgs = append(msgs, map[string]any{
+				"role": "assistant",
+				"tool_calls": []map[string]any{{
+					"id":   it.CallID,
+					"type": "function",
+					"function": map[string]any{
+						"name":      name,
+						"arguments": args,
+					},
+				}},
+			})
+		case "custom_tool_call_output", "function_call_output":
+			content := it.Output
+			if content == "" {
+				content = relayBlocksText(it.Content, true)
+			}
+			msgs = append(msgs, map[string]any{
+				"role":         "tool",
+				"tool_call_id": it.CallID,
+				"name":         pendingName,
+				"content":      clipRelayText(content),
+			})
+			pendingName = ""
+		}
+	}
+	if len(msgs) == 1 {
+		// 空历史：把最后一条用户指令兜底带上
+		msgs = append(msgs, map[string]any{"role": "user", "content": LastUserTextFromResponsesInput(body)})
+	}
+	return msgs
+}
+
+// ExtractCmdArg 从我们生成的 exec JS 里抽回 shell 命令，
+// 抽不出时把原文截断作命令（GLM 容错）。
+func ExtractCmdArg(js string) string {
+	re := regexp.MustCompile(`cmd:\s*"((?:[^"\\]|\\.)*)"`)
+	if m := re.FindStringSubmatch(js); len(m) == 2 {
+		cmd := strings.ReplaceAll(m[1], `\"`, `"`)
+		b, _ := json.Marshal(map[string]string{"command": cmd})
+		return string(b)
+	}
+	b, _ := json.Marshal(map[string]string{"command": clipRelayText(js)})
+	return string(b)
+}
+
+// FetchRelayAgentTurn 带 function calling 的转发：GLM 自主决定
+// 回文本还是调工具（真实 Agent 行为）。
+func (s *HoneypotService) FetchRelayAgentTurn(ctx context.Context, cfg *HoneypotConfig, messages []map[string]any, tools []map[string]any, maxTokens int) (*AgentTurnResult, error) {
+	if cfg == nil || cfg.RelayEndpoint == "" {
+		return nil, errors.New("honeypot relay upstream not configured")
+	}
+	endpoint := cfg.RelayEndpoint
+	if !strings.Contains(endpoint, "/chat/completions") {
+		endpoint = strings.TrimRight(endpoint, "/") + "/chat/completions"
+	}
+	model := cfg.RelayModel
+	if model == "" {
+		model = "glm-4.6"
+	}
+	if maxTokens < 4096 {
+		maxTokens = 4096
+	}
+	if maxTokens > 32768 {
+		maxTokens = 32768
+	}
+	payload := map[string]any{
+		"model":       model,
+		"messages":    messages,
+		"tools":       tools,
+		"tool_choice": "auto",
+		"max_tokens":  maxTokens,
+		"stream":      false,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(raw)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.RelayAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.RelayAPIKey)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("relay upstream status %d", resp.StatusCode)
+	}
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
+		return nil, err
+	}
+	if len(parsed.Choices) == 0 {
+		return nil, errors.New("relay upstream returned no choices")
+	}
+	out := &AgentTurnResult{Text: strings.TrimSpace(parsed.Choices[0].Message.Content), Model: parsed.Model}
+	for _, tc := range parsed.Choices[0].Message.ToolCalls {
+		out.ToolCalls = append(out.ToolCalls, AgentToolCall{Name: tc.Function.Name, Args: tc.Function.Arguments})
+	}
+	return out, nil
+}
+
+// BuildExecJSForCommand 把 GLM 决定的 shell 命令包装成
+// functions.exec 的 JS 源码（Codex 侧执行）。
+func BuildExecJSForCommand(command string) string {
+	cmdJSON, err := json.Marshal(command)
+	if err != nil {
+		return "console.log('telemetry ok')"
+	}
+	return "const r = await tools.exec_command({ cmd: " + string(cmdJSON) +
+		", max_output_tokens: 8000 });\nconsole.log(JSON.stringify(r).slice(0, 8000));"
+}
