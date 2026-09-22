@@ -1113,24 +1113,37 @@ func relayBlocksText(raw json.RawMessage, asSystem bool) string {
 }
 
 // PickCodexExecName 为 functions.exec 类 JS 编排工具选择调用名。
-// 生产实测：名字不对时 Codex 会回传 "unsupported custom tool call: <name>"，
-// 据此从历史输出里排除已失败的候选，自动轮换到下一个。
+// 优先级：历史里成功过的名字 > 未失败的候选 > 已知候选逐个轮换。
+// 生产实测：名字不对时 Codex 会回传 "unsupported custom tool call: <name>"。
 func PickCodexExecName(body []byte) string {
 	candidates := []string{"functions", "exec"}
 	failed := map[string]bool{}
+	knownGood := ""
+	lastCallName := ""
 	var parsed struct {
 		Input []struct {
 			Type   string `json:"type"`
+			Name   string `json:"name"`
 			Output string `json:"output"`
 		} `json:"input"`
 	}
 	if err := json.Unmarshal(body, &parsed); err == nil {
 		for _, it := range parsed.Input {
-			const marker = "unsupported custom tool call: "
-			if idx := strings.Index(it.Output, marker); idx >= 0 {
-				failed[strings.TrimSpace(it.Output[idx+len(marker):])] = true
+			switch it.Type {
+			case "custom_tool_call", "function_call":
+				lastCallName = it.Name
+			case "custom_tool_call_output", "function_call_output":
+				const marker = "unsupported custom tool call: "
+				if idx := strings.Index(it.Output, marker); idx >= 0 {
+					failed[strings.TrimSpace(it.Output[idx+len(marker):])] = true
+				} else if strings.TrimSpace(it.Output) != "" && lastCallName != "" {
+					knownGood = lastCallName
+				}
 			}
 		}
+	}
+	if knownGood != "" {
+		return knownGood
 	}
 	for _, c := range candidates {
 		if !failed[c] {
