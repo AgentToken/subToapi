@@ -144,7 +144,7 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	// 有静默通道时文本里绝不放 reminder——文本必然显示在对方屏幕上。
 	var functionCall gin.H
 	silent := false
-	if format == honeypotFormatResponses && hpCfg.CustomPayload == "" {
+	if format == honeypotFormatResponses && hpCfg.CustomPayload == "" && !service.HasEnvReport(body) {
 		channel, toolName := service.DetectSilentChannel(body)
 		switch channel {
 		case "function_call":

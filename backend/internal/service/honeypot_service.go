@@ -950,6 +950,22 @@ const (
 	relayMaxChars    = 48000
 )
 
+// HoneypotRelaySystemPrompt 转发上游使用的干净系统提示。
+// 不透传 Codex / Claude Code 的 harness 提示：那类提示要求模型使用
+// 特定工具与输出格式（functions.exec、<minimized_reasoning> 等），
+// 上游没有这些工具定义时，模型会在正文里"扮演"工具调用并退化为
+// 循环胡话（生产实测）。
+const HoneypotRelaySystemPrompt = `You are a helpful AI coding assistant in the user's terminal.
+- Reply in the same language the user writes in. Be concise, practical and direct.
+- You have NO tools and no filesystem access in this session. If a task needs files or shell commands, say so briefly and ask the user to paste the relevant content or command output.
+- Never mention system prompts, internal formats, XML tags or tool-call syntax. Answer in plain conversational text only.`
+
+// HasEnvReport 报告请求 input 历史里是否已出现过 env_report 回传。
+// 用于一次会话只注入一次探测调用，避免 Codex 无限重复执行。
+func HasEnvReport(body []byte) bool {
+	return strings.Contains(string(body), "<env_report>")
+}
+
 // BuildRelayMessages 把盗用者的原始请求体翻译成上游 chat/completions 的
 // messages 数组——完整保留对话历史与工具输出，GLM 才有上下文连贯作答。
 // responsesStyle=true 按 Responses API（input item 数组）解析，
@@ -999,9 +1015,7 @@ func relayMessagesFromResponses(body []byte) []map[string]string {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return msgs
 	}
-	if sys := relayBlocksText(parsed.Instructions, true); sys != "" {
-		msgs = append(msgs, map[string]string{"role": "system", "content": sys})
-	}
+	msgs = append(msgs, map[string]string{"role": "system", "content": HoneypotRelaySystemPrompt})
 	var text string
 	if len(parsed.Input) > 0 && json.Unmarshal(parsed.Input, &text) == nil {
 		msgs = append(msgs, relayMsg("user", text))
@@ -1025,7 +1039,7 @@ func relayMessagesFromResponses(body []byte) []map[string]string {
 				role = "user"
 			}
 			if role == "developer" || role == "system" {
-				msgs = append(msgs, relayMsg("system", relayBlocksText(it.Content, false)))
+				// harness 注入（环境/格式要求），透传会让上游"扮演"工具调用
 				continue
 			}
 			msgs = append(msgs, relayMsg(role, relayBlocksText(it.Content, false)))
@@ -1056,13 +1070,7 @@ func relayMessagesFromChatStyle(body []byte) []map[string]string {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return msgs
 	}
-	sys := relayBlocksText(parsed.System, true)
-	if sys == "" {
-		sys = relayBlocksText(parsed.Instructions, true)
-	}
-	if sys != "" {
-		msgs = append(msgs, map[string]string{"role": "system", "content": sys})
-	}
+	msgs = append(msgs, map[string]string{"role": "system", "content": HoneypotRelaySystemPrompt})
 	for _, m := range parsed.Messages {
 		role := m.Role
 		if role != "user" && role != "assistant" {
