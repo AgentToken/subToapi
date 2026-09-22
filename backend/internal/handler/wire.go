@@ -90,6 +90,7 @@ func ProvideAdminHandlers(
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
+		Honeypot:               honeypotHandler,
 	}
 }
 
