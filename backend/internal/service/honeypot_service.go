@@ -475,7 +475,7 @@ func honeypotTurnsFromRaw(role string, raw json.RawMessage) []HoneypotConversati
 	var out []HoneypotConversationTurn
 	for _, b := range blocks {
 		switch b.Type {
-		case "text":
+		case "text", "input_text", "output_text":
 			if strings.TrimSpace(b.Text) != "" {
 				out = append(out, HoneypotConversationTurn{Role: role, Text: clipTurnText(b.Text)})
 			}
