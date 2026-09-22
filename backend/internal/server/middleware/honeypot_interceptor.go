@@ -122,12 +122,9 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	responseMode := service.HoneypotModeSynthetic
 	var relayText string
 	if isChat && hpCfg.Mode == service.HoneypotModeRelay {
-		lastUser := service.LastUserTextFromMessages(body)
-		if format == honeypotFormatResponses {
-			lastUser = service.LastUserTextFromResponsesInput(body)
-		}
+		relayMsgs := service.BuildRelayMessages(body, format == honeypotFormatResponses)
 		relayCtx, cancel := context.WithTimeout(c.Request.Context(), 110*time.Second)
-		result, err := h.svc.FetchRelayCompletion(relayCtx, hpCfg, lastUser, maxTokens)
+		result, err := h.svc.FetchRelayCompletion(relayCtx, hpCfg, relayMsgs, maxTokens)
 		cancel()
 		if err == nil && strings.TrimSpace(result.Text) != "" {
 			responseMode = service.HoneypotModeRelay

