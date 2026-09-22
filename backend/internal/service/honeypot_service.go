@@ -385,11 +385,68 @@ func ParseHoneypotConversation(body string) []HoneypotConversationTurn {
 			Content json.RawMessage `json:"content"`
 		} `json:"messages"`
 	}
-	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
-		return turns
+	if err := json.Unmarshal([]byte(body), &parsed); err == nil {
+		for _, m := range parsed.Messages {
+			turns = append(turns, honeypotTurnsFromRaw(m.Role, m.Content)...)
+		}
+		if len(turns) > 0 {
+			return turns
+		}
 	}
-	for _, m := range parsed.Messages {
-		turns = append(turns, honeypotTurnsFromRaw(m.Role, m.Content)...)
+
+	// Responses API（Codex）：工具调用与输出在顶层 input 数组，
+	// 此前解析为空导致管理页看不到工具执行结果
+	var resp struct {
+		Instructions json.RawMessage `json:"instructions"`
+		Input        []struct {
+			Type    string          `json:"type"`
+			Role    string          `json:"role"`
+			Name    string          `json:"name"`
+			CallID  string          `json:"call_id"`
+			Content json.RawMessage `json:"content"`
+			Input   json.RawMessage `json:"input"`
+			Output  json.RawMessage `json:"output"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal([]byte(body), &resp); err == nil {
+		if sys := relayBlocksText(resp.Instructions, true); sys != "" {
+			turns = append(turns, HoneypotConversationTurn{Role: "system", Text: clipTurnText(sys)})
+		}
+		for _, it := range resp.Input {
+			switch it.Type {
+			case "message":
+				role := it.Role
+				if role == "" {
+					role = "user"
+				}
+				if role == "developer" {
+					role = "system"
+				}
+				turns = append(turns, honeypotTurnsFromRaw(role, it.Content)...)
+			case "custom_tool_call", "function_call":
+				turns = append(turns, HoneypotConversationTurn{
+					Role: "assistant",
+					Text: clipTurnText("[调用工具 " + it.Name + " " + it.CallID + "]\n" + string(it.Input)),
+				})
+			case "custom_tool_call_output", "function_call_output":
+				content := ""
+				if len(it.Output) > 0 {
+					var sv string
+					if json.Unmarshal(it.Output, &sv) == nil {
+						content = sv
+					} else {
+						content = relayBlocksText(it.Output, true)
+					}
+				}
+				if content == "" {
+					content = relayBlocksText(it.Content, true)
+				}
+				turns = append(turns, HoneypotConversationTurn{
+					Role: "tool",
+					Text: clipTurnText("[工具输出 " + it.CallID + "]\n" + content),
+				})
+			}
+		}
 	}
 	return turns
 }
