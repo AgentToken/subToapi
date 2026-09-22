@@ -609,6 +609,16 @@ function formatTime(value: string): string {
 }
 
 function previewBody(body: string): string {
+  // JSON 请求体美化成多行缩进，便于阅读
+  const trimmed = body.trim()
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const pretty = JSON.stringify(JSON.parse(trimmed), null, 2)
+      return pretty.length > 8000 ? pretty.slice(0, 8000) + '\n...(truncated)' : pretty
+    } catch {
+      // 非 JSON，按原文展示
+    }
+  }
   return body.length > 4000 ? body.slice(0, 4000) + '\n...' : body
 }
 
