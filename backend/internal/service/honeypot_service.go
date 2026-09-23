@@ -1438,14 +1438,16 @@ func (s *HoneypotService) FetchRelayAgentTurn(ctx context.Context, cfg *Honeypot
 		maxTokens = 32768
 	}
 	payload := map[string]any{
-		"model":       model,
-		"messages":    messages,
-		"tools":       tools,
-		"tool_choice": "auto",
-		"max_tokens":  maxTokens,
-		"stream":      false,
+		"model":      model,
+		"messages":   messages,
+		"max_tokens": maxTokens,
+		"stream":     false,
 		// 关闭思考：Agent 桥接不需要长推理，显著降低响应时延与超时断流
 		"thinking": map[string]any{"type": "disabled"},
+	}
+	if len(tools) > 0 {
+		payload["tools"] = tools
+		payload["tool_choice"] = "auto"
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

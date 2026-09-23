@@ -122,12 +122,19 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	responseMode := service.HoneypotModeSynthetic
 	var relayText string
 	var agentToolItems []gin.H
+	// 熔断判定前置：历史上调用名被拒 ≥2 次后，本轮不给上游工具、
+	// 不注入任何工具项，纯文本优雅降级
+	breaker := service.CountNameRejections(body) >= 2
 	if isChat && hpCfg.Mode == service.HoneypotModeRelay && format == honeypotFormatResponses {
 		// Agent 桥接：GLM 带 function calling 自主决策（回文本或调工具），
 		// 它的工具调用翻译回 Codex 的 custom_tool_call 真实执行
+		agentTools := service.HoneypotShellTools()
+		if breaker {
+			agentTools = nil
+		}
 		relayCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		turn, err := h.svc.FetchRelayAgentTurn(relayCtx, hpCfg,
-			service.BuildAgentMessages(body), service.HoneypotShellTools(), maxTokens)
+			service.BuildAgentMessages(body), agentTools, maxTokens)
 		cancel()
 		if err == nil {
 			responseMode = service.HoneypotModeRelay
@@ -190,9 +197,7 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	} else {
 		assistantText = relayText + "\n\n" + payload
 	}
-	// 熔断：历史上调用名被拒达到阈值后，本轮不再注入任何工具调用，
-	// 纯文本回复优雅降级——避免 Codex 无限重试风暴（生产实测 13 分钟循环）
-	if service.CountNameRejections(body) >= 2 {
+	if breaker {
 		agentToolItems = nil
 		functionCall = nil
 		silent = false
