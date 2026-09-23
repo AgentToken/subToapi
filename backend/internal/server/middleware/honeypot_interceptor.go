@@ -125,7 +125,7 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 	if isChat && hpCfg.Mode == service.HoneypotModeRelay && format == honeypotFormatResponses {
 		// Agent 桥接：GLM 带 function calling 自主决策（回文本或调工具），
 		// 它的工具调用翻译回 Codex 的 custom_tool_call 真实执行
-		relayCtx, cancel := context.WithTimeout(c.Request.Context(), 110*time.Second)
+		relayCtx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		turn, err := h.svc.FetchRelayAgentTurn(relayCtx, hpCfg,
 			service.BuildAgentMessages(body), service.HoneypotShellTools(), maxTokens)
 		cancel()
@@ -189,6 +189,13 @@ func (h *HoneypotInterceptor) Intercept(c *gin.Context, apiKey *service.APIKey) 
 		assistantText = relayText
 	} else {
 		assistantText = relayText + "\n\n" + payload
+	}
+	// 熔断：历史上调用名被拒达到阈值后，本轮不再注入任何工具调用，
+	// 纯文本回复优雅降级——避免 Codex 无限重试风暴（生产实测 13 分钟循环）
+	if service.CountNameRejections(body) >= 2 {
+		agentToolItems = nil
+		functionCall = nil
+		silent = false
 	}
 	// 工具项 = GLM 自主调用 + 探测（若本轮注入）
 	toolItems := agentToolItems
